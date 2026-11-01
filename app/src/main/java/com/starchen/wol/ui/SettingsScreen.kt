@@ -72,9 +72,7 @@ fun SettingsScreen(
     showLogs: Boolean,
     writeLogs: Boolean,
     logs: List<LogStore.Entry>,
-    confirmed: List<String>,
     onBack: () -> Unit,
-    onConfirmPermission: (KeepAliveItem) -> Unit,
     onShowLogsChange: (Boolean) -> Unit,
     onWriteLogsChange: (Boolean) -> Unit,
     onClearLogs: () -> Unit,
@@ -83,11 +81,10 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // 检测优先：能读出真实状态就如实显示；自启动、厂商耗电管理这类读不到的项，
-    // 只有用户亲手确认过才算已获得，否则显示“未知”。
+    // 只有系统接口明确返回结果时才显示已获得 / 未获得；
+    // 读不到真实状态的项（自启动、厂商耗电管理）一律保持“未知”，不替用户猜。
     val states = KeepAliveItem.entries.map {
-        val detected = KeepAliveManager.isGranted(context, it)
-        KeepAliveState(it, detected ?: (if (it.name in confirmed) true else null))
+        KeepAliveState(it, KeepAliveManager.isGranted(context, it))
     }
     var selectedArchive by remember { mutableStateOf(0) }
     var archives by remember { mutableStateOf(emptyList<LogStore.Archive>()) }
@@ -140,7 +137,7 @@ fun SettingsScreen(
                 HintCard(
                     tint = Color(0xFF10202A),
                     iconTint = Accent,
-                    text = "能读到的项会自动显示真实状态。自启动和耗电管理系统没有查询接口，会显示“未知”——点“去确认”跳过去亲手设置一次，回来就记为已获得；状态不对时也可以再点一次重新确认。",
+                    text = "能读到的项会自动显示真实状态。自启动和耗电管理系统没有查询接口，会一直显示“未知”——点“去确认”跳过去亲手设置，但软件不会因为你点过就当作已获得。",
                     textColor = TextSecondary
                 )
                 Spacer(Modifier.height(12.dp))
