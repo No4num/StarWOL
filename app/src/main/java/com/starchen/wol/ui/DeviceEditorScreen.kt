@@ -28,11 +28,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +56,7 @@ import com.starchen.wol.data.Device
 import com.starchen.wol.ui.components.WheelPicker
 import com.starchen.wol.ui.theme.Accent
 import com.starchen.wol.ui.theme.Danger
+import com.starchen.wol.ui.theme.Success
 import com.starchen.wol.ui.theme.Surface1
 import com.starchen.wol.ui.theme.Surface2
 import com.starchen.wol.ui.theme.TextPrimary
@@ -65,7 +68,8 @@ import com.starchen.wol.wol.MacUtils
 fun DeviceEditorScreen(
     existing: Device?,
     onBack: () -> Unit,
-    onSave: (Device) -> Unit
+    onSave: (Device) -> Unit,
+    onDelete: () -> Unit = {}
 ) {
     var name by rememberSaveable { mutableStateOf(existing?.name ?: "") }
     var ip by rememberSaveable { mutableStateOf(existing?.ip ?: "") }
@@ -76,6 +80,8 @@ fun DeviceEditorScreen(
     var hour by rememberSaveable { mutableStateOf(existing?.autoWakeHour ?: 8) }
     var minute by rememberSaveable { mutableStateOf(existing?.autoWakeMinute ?: 0) }
     var macTouched by remember { mutableStateOf(false) }
+    var macConfirmed by remember { mutableStateOf(existing != null) }
+    var confirmDelete by remember { mutableStateOf(false) }
     var submitted by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -90,9 +96,12 @@ fun DeviceEditorScreen(
             .background(Color(0xFF0B0C0E))
     ) {
         Column(Modifier.fillMaxSize()) {
+            val deleteAction: (() -> Unit)? =
+                if (existing != null) ({ confirmDelete = true }) else null
             EditorTopBar(
                 title = if (existing == null) "添加设备" else "编辑设备",
-                onBack = onBack
+                onBack = onBack,
+                onDelete = deleteAction
             )
             Column(
                 modifier = Modifier
@@ -148,6 +157,7 @@ fun DeviceEditorScreen(
                             onValueChange = {
                                 mac = it
                                 macTouched = true
+                                macConfirmed = false
                             },
                             error = when {
                                 submitted && mac.isBlank() -> "不能为空"
@@ -163,7 +173,13 @@ fun DeviceEditorScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .background(if (macValid) Accent.copy(alpha = 0.16f) else Surface2)
                             .clickable {
-                                mac = MacUtils.normalize(mac) ?: mac.uppercase()
+                                val normalized = MacUtils.normalize(mac)
+                                if (normalized != null) {
+                                    mac = normalized
+                                    macConfirmed = true
+                                } else {
+                                    macConfirmed = false
+                                }
                                 macTouched = true
                             }
                             .padding(horizontal = 16.dp),
@@ -178,12 +194,32 @@ fun DeviceEditorScreen(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    "支持 AABB-CCDD-EEFF / AA-BB-CC-DD-EE-FF / AABB:CCDD:EEFF / AA:BB:CC:DD:EE:FF",
-                    color = Danger.copy(alpha = 0.85f),
-                    fontSize = 11.sp,
-                    lineHeight = 16.sp
-                )
+                when {
+                    macConfirmed && macValid -> Text(
+                        "已确认：" + (MacUtils.normalize(mac) ?: mac),
+                        color = Success,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                    mac.isNotBlank() && macValid -> Text(
+                        "请点击右侧「完成」按钮确认 MAC",
+                        color = Danger,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                    mac.isNotBlank() -> Text(
+                        "格式无法识别。支持 AABB-CCDD-EEFF / AA-BB-CC-DD-EE-FF / AABB:CCDD:EEFF / AA:BB:CC:DD:EE:FF",
+                        color = Danger,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                    else -> Text(
+                        "支持 AABB-CCDD-EEFF / AA-BB-CC-DD-EE-FF / AABB:CCDD:EEFF / AA:BB:CC:DD:EE:FF",
+                        color = TextTertiary,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
+                }
 
                 Spacer(Modifier.height(26.dp))
 
@@ -229,11 +265,12 @@ fun DeviceEditorScreen(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
-                    .background(Accent)
+                    .background(if (macConfirmed && macValid) Accent else Surface2)
                     .clickable {
                         submitted = true
                         val normalized = MacUtils.normalize(mac)
-                        if (nameValid && ipValid && portValid && normalized != null) {
+                        if (!macConfirmed || normalized == null) return@clickable
+                        if (nameValid && ipValid && portValid) {
                             onSave(
                                 Device(
                                     id = existing?.id ?: java.util.UUID.randomUUID().toString(),
@@ -252,14 +289,43 @@ fun DeviceEditorScreen(
                     .padding(horizontal = 28.dp, vertical = 14.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("保存", color = Color(0xFF06212B), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "保存",
+                    color = if (macConfirmed && macValid) Color(0xFF06212B) else TextTertiary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("删除设备", color = TextPrimary) },
+            text = {
+                Text(
+                    "删掉「${existing?.name ?: ""}」以及它的定时唤醒任务？",
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDelete()
+                }) { Text("删除", color = Danger) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text("取消", color = TextSecondary)
+                }
+            }
+        )
     }
 }
 
 @Composable
-private fun EditorTopBar(title: String, onBack: () -> Unit) {
+private fun EditorTopBar(title: String, onBack: () -> Unit, onDelete: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -274,6 +340,19 @@ private fun EditorTopBar(title: String, onBack: () -> Unit) {
             )
         }
         Text(title, color = TextPrimary, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.weight(1f))
+        if (onDelete != null) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Danger.copy(alpha = 0.16f))
+                    .clickable { onDelete() }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("删除", color = Danger, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+        }
     }
 }
 

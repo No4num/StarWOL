@@ -178,11 +178,14 @@ private fun AppRoot(
                     showLogs = settings.showLogs,
                     writeLogs = settings.writeLogs,
                     logs = logs,
+                    confirmed = settings.confirmedPermissions,
                     onBack = { screen = Screen.Home },
+                    onConfirmPermission = { viewModel.confirmPermission(it) },
                     onShowLogsChange = { viewModel.setShowLogs(it) },
                     onWriteLogsChange = { viewModel.setWriteLogs(it) },
                     onClearLogs = { viewModel.clearLogs() },
                     onRequestPermission = { item ->
+                        viewModel.confirmPermission(item)
                         if (KeepAliveManager.isRuntimePermission(item)) {
                             requestNotificationPermission { }
                         } else {
@@ -196,6 +199,10 @@ private fun AppRoot(
                     onBack = { screen = Screen.Home },
                     onSave = { device ->
                         viewModel.saveDevice(device)
+                        screen = Screen.Home
+                    },
+                    onDelete = {
+                        target.device?.let { viewModel.deleteDevice(it) }
                         screen = Screen.Home
                     }
                 )
@@ -283,6 +290,16 @@ private fun WakeDialog(state: WakeUiState, onDismiss: () -> Unit) {
                         }
                     }
 
+                }
+
+                if (!state.sending) {
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        "已尝试发出如上报文，设备应该被唤醒",
+                        color = TextTertiary,
+                        fontSize = 11.sp,
+                        lineHeight = 17.sp
+                    )
                 }
 
                 Spacer(Modifier.height(18.dp))

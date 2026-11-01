@@ -28,5 +28,7 @@ data class AppSettings(
     /** 设置页里显示日志面板 */
     val showLogs: Boolean = true,
     /** 运行过程中把日志写进文件 */
-    val writeLogs: Boolean = true
+    val writeLogs: Boolean = true,
+    /** 用户亲手点过确认的保活项，存 KeepAliveItem.name */
+    val confirmedPermissions: List<String> = emptyList()
 )

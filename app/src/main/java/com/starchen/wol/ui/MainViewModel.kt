@@ -7,6 +7,8 @@ import com.starchen.wol.data.AppSettings
 import com.starchen.wol.data.Device
 import com.starchen.wol.data.WolStore
 import com.starchen.wol.service.AutoWakeService
+import com.starchen.wol.service.KeepAliveItem
+import com.starchen.wol.service.KeepAliveManager
 import com.starchen.wol.service.Scheduler
 import com.starchen.wol.util.LogStore
 import com.starchen.wol.wol.SendReport
@@ -74,6 +76,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             WolStore.delete(context, device.id)
             LogStore.info(context, "DEVICE", "删除设备 ${device.name} / ${device.endpoint}")
             withContext(Dispatchers.IO) { Scheduler.cancel(context, device.id) }
+        }
+    }
+
+    /** 用户点了一次某个保活项，就记一笔，不再依赖系统读回来的状态 */
+    fun confirmPermission(item: KeepAliveItem) {
+        viewModelScope.launch {
+            val cur = settings.value
+            if (item.name in cur.confirmedPermissions) return@launch
+            WolStore.saveSettings(
+                context,
+                cur.copy(confirmedPermissions = cur.confirmedPermissions + item.name)
+            )
+            LogStore.info(context, "PERM", "已确认 ${KeepAliveManager.title(item)}")
         }
     }
 

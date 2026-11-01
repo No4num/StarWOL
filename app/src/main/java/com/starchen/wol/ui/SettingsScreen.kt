@@ -72,7 +72,9 @@ fun SettingsScreen(
     showLogs: Boolean,
     writeLogs: Boolean,
     logs: List<LogStore.Entry>,
+    confirmed: List<String>,
     onBack: () -> Unit,
+    onConfirmPermission: (KeepAliveItem) -> Unit,
     onShowLogsChange: (Boolean) -> Unit,
     onWriteLogsChange: (Boolean) -> Unit,
     onClearLogs: () -> Unit,
@@ -81,7 +83,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var states by remember { mutableStateOf(KeepAliveManager.allStates(context)) }
+    val states = KeepAliveItem.entries.map { KeepAliveState(it, it.name in confirmed) }
     var selectedArchive by remember { mutableStateOf(0) }
     var archives by remember { mutableStateOf(emptyList<LogStore.Archive>()) }
 
@@ -89,7 +91,6 @@ fun SettingsScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                states = KeepAliveManager.allStates(context)
                 archives = LogStore.archives(context)
             }
         }
@@ -134,7 +135,7 @@ fun SettingsScreen(
                 HintCard(
                     tint = Color(0xFF10202A),
                     iconTint = Accent,
-                    text = "下面这些是保活需要的权限，缺一个定时任务都可能被系统掐断。可以逐项点右边的按钮去授权。",
+                    text = "每一项都要你亲手点一次才算确认，这样不会被系统读不到的状态误导。已经确认过的也可以再点一次重新跳转确认 —— 状态不对时就这么做。",
                     textColor = TextSecondary
                 )
                 Spacer(Modifier.height(12.dp))
@@ -144,10 +145,6 @@ fun SettingsScreen(
                         onRequest = {
                             onRequestPermission(state.item)
                             LogStore.info(context, "PERM", "请求 ${KeepAliveManager.title(state.item)}")
-                            scope.launch {
-                                delay(600)
-                                states = KeepAliveManager.allStates(context)
-                            }
                         }
                     )
                     Spacer(Modifier.height(8.dp))
@@ -244,7 +241,7 @@ fun SettingsScreen(
 
                 Spacer(Modifier.height(30.dp))
                 Text(
-                    "StarWOL 1.0.9",
+                    "StarWOL 1.0.10",
                     color = TextTertiary,
                     fontSize = 11.sp,
                     modifier = Modifier.fillMaxWidth(),
@@ -383,15 +380,22 @@ private fun PermissionRow(state: KeepAliveState, onRequest: () -> Unit) {
         }
         Spacer(Modifier.width(10.dp))
         if (state.granted) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Success.copy(alpha = 0.16f))
+                    .clickable { onRequest() }
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(
                     Icons.Outlined.CheckCircle,
                     contentDescription = null,
                     tint = Success,
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(14.dp)
                 )
                 Spacer(Modifier.width(4.dp))
-                Text("已获得", color = Success, fontSize = 12.sp)
+                Text("已获得", color = Success, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
         } else {
             SmallButton("请求", onRequest)

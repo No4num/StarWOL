@@ -80,6 +80,12 @@ fun HomeScreen(
                         .padding(bottom = 96.dp)
                 )
             } else {
+                Text(
+                    "长按卡片删除，点击插头按钮以唤醒设备",
+                    color = TextTertiary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 6.dp)
+                )
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(
