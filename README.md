@@ -2,6 +2,8 @@
 
 局域网唤醒（Wake-on-LAN）的安卓客户端。深色主题，原生 Kotlin + Jetpack Compose。
 
+文件夹内的历史版本说明：[history.md](history/history.md)
+
 ## 展示
 
 | 主页                               | 添加设备页                                   | 添加设备页2                          |
@@ -75,7 +77,7 @@ export USE_CN_MIRROR=true
 - `StarWOL-debug`：可直接安装的 debug 包
 - `StarWOL-release`：release 包
 
-release 默认用工程内 `.keystore/starwol.jks`（密码都是 `starwol`）。要换成自己的签名，在仓库 Secrets 里配：
+签名材料不进仓库，按顺序查找：环境变量 → `local.properties` 里的 `starwol.*` → 工程内 `.keystore/starwol.jks`，都没有就退回 debug 签名。要固定签名，在仓库 Secrets 里配：
 
 | Secret | 说明 |
 | --- | --- |
@@ -84,7 +86,7 @@ release 默认用工程内 `.keystore/starwol.jks`（密码都是 `starwol`）�
 | `KEY_ALIAS` | 别名 |
 | `KEY_PASSWORD` | key 密码 |
 
-没配 `KEYSTORE_BASE64` 时工作流会现场生成一个临时 keystore，保证 release 能构建出来（但那不是稳定签名，只适合自测）。
+没配 `KEYSTORE_BASE64` 时工作流会现场生成一个一次性 keystore（密码随机），保证 release 能构建出来，但每次签名都不同，没法覆盖升级，只适合自测。
 
 ## 保活说明
 

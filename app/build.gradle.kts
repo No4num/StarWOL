@@ -19,34 +19,53 @@ android {
     }
 
     signingConfigs {
-        // 本地 / CI 都可用：优先读环境变量，取不到就退回 debug 签名，
-        // 这样 GitHub Actions 产出的 release APK 直接可装。
+        // 签名材料一律不进仓库，按下面顺序查找，全都没有就退回 debug 签名（依旧能打出可安装的包）：
+        //   1. 环境变量 KEYSTORE_PATH / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD
+        //   2. local.properties 里的 starwol.* （该文件已被 .gitignore 排除）
+        //   3. 工程根目录的 .keystore/starwol.jks + local.properties 里的密码
         create("shared") {
-            val store = System.getenv("KEYSTORE_PATH")
-            if (store != null && File(store).exists()) {
+            // local.properties 是 Properties 格式，这里只做最简解析：
+            // Kotlin DSL 里写 java.util.* 会被解析成 JavaPluginExtension，干脆绕开。
+            val props: Map<String, String> = run {
+                val f = rootProject.file("local.properties")
+                if (!f.exists()) return@run emptyMap()
+                f.readLines().mapNotNull { raw ->
+                    val line = raw.trim()
+                    if (line.isEmpty() || line.startsWith("#") || !line.contains('=')) null
+                    else line.substringBefore('=').trim() to line.substringAfter('=').trim()
+                }.toMap()
+            }
+            fun pick(propKey: String, envKey: String): String? =
+                System.getenv(envKey)?.takeIf { it.isNotBlank() }
+                    ?: props[propKey]?.takeIf { it.isNotBlank() }
+
+            val store = pick("starwol.storeFile", "KEYSTORE_PATH")
+                ?: rootProject.file(".keystore/starwol.jks").takeIf { it.exists() }?.absolutePath
+            val storePw = pick("starwol.storePassword", "KEYSTORE_PASSWORD")
+
+            if (store != null && storePw != null) {
                 storeFile = File(store)
-                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-                keyAlias = System.getenv("KEY_ALIAS") ?: ""
-                keyPassword = System.getenv("KEY_PASSWORD") ?: ""
-            } else {
-                storeFile = file("${rootDir}/.keystore/starwol.jks")
-                storePassword = "starwol"
-                keyAlias = "starwol"
-                keyPassword = "starwol"
+                storePassword = storePw
+                keyAlias = pick("starwol.keyAlias", "KEY_ALIAS") ?: "starwol"
+                keyPassword = pick("starwol.keyPassword", "KEY_PASSWORD") ?: storePw
             }
         }
     }
 
     buildTypes {
+        // shared 没有配好签名材料时，退回 AGP 内置的 debug 签名
+        val signer = signingConfigs.getByName("shared").takeIf { it.storeFile != null }
+            ?: signingConfigs.getByName("debug")
+
         release {
             isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = signingConfigs.getByName("shared")
+            signingConfig = signer
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
             applicationIdSuffix = ".debug"
-            signingConfig = signingConfigs.getByName("shared")
+            signingConfig = signer
         }
     }
 

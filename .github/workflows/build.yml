@@ -35,21 +35,35 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      # release 包默认用工程内 .keystore/starwol.jks 签名。
-      # 仓库里不提交它的话，这里现场生成一个（密码都是 starwol）。
-      # 想要固定签名就配 KEYSTORE_BASE64 secret，把它解码成 .keystore/starwol.jks。
+      # 签名材料不进仓库。
+      # 配了 KEYSTORE_BASE64 secret：用它解码出 .keystore/starwol.jks，签名固定，可以覆盖升级。
+      # 没配：现场生成一个一次性密钥，每次构建签名都不同，只适合测试安装。
       - name: Prepare signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           mkdir -p .keystore
-          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
-            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > .keystore/starwol.jks
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > .keystore/starwol.jks
+            echo "KEYSTORE_PASSWORD=$KS_PASSWORD" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=$KS_ALIAS" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$KS_KEY_PASSWORD" >> "$GITHUB_ENV"
           else
+            PW=$(openssl rand -hex 16)
             keytool -genkeypair -v \
               -keystore .keystore/starwol.jks \
               -alias starwol -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass starwol -keypass starwol \
+              -storepass "$PW" -keypass "$PW" \
               -dname "CN=StarWOL, OU=Dev, O=StarWOL, L=SH, ST=SH, C=CN"
+            echo "KEYSTORE_PASSWORD=$PW" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$PW" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=starwol" >> "$GITHUB_ENV"
           fi
+          echo "KEYSTORE_PATH=$GITHUB_WORKSPACE/.keystore/starwol.jks" >> "$GITHUB_ENV"
+          echo "signing key ready, from secret: ${KEYSTORE_BASE64:+yes}"
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
