@@ -22,11 +22,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Power
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.ToggleOn
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -241,7 +241,7 @@ private fun DeviceCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Outlined.Power,
+                    Icons.Outlined.Devices,
                     contentDescription = null,
                     tint = Accent,
                     modifier = Modifier.size(20.dp)
@@ -299,12 +299,11 @@ private fun DeviceCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Outlined.ToggleOn,
+                    Icons.Outlined.Power,
                     contentDescription = "唤醒 ${device.name}",
                     tint = Accent,
                     modifier = Modifier.size(26.dp)
-                )
-            }
+                )            }
             Spacer(Modifier.width(10.dp))
             // 编辑：和唤醒同高的方块底，不再是一个孤零零的小图标
             Box(

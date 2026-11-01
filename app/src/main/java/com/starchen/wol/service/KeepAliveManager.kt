@@ -12,6 +12,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import androidx.core.content.ContextCompat
+import com.starchen.wol.util.LogStore
 import java.io.DataOutputStream
 
 /**
@@ -36,7 +37,7 @@ object KeepAliveManager {
         KeepAliveItem.BATTERY -> "忽略电池优化"
         KeepAliveItem.EXACT_ALARM -> "精确闹钟"
         KeepAliveItem.AUTO_START -> "开机自启动"
-        KeepAliveItem.BACKGROUND -> "后台运行限制"
+        KeepAliveItem.BACKGROUND -> "耗电管理 · 完全允许"
         KeepAliveItem.ACCESSIBILITY -> "无障碍服务"
     }
 
@@ -44,8 +45,8 @@ object KeepAliveManager {
         KeepAliveItem.NOTIFICATION -> "前台服务需要常驻通知，否则定时唤醒会被系统掐掉"
         KeepAliveItem.BATTERY -> "允许应用在电池优化中豁免，避免息屏后被冻结"
         KeepAliveItem.EXACT_ALARM -> "定时唤醒到点要准，非精确闹钟可能延迟几分钟"
-        KeepAliveItem.AUTO_START -> "重启后自动恢复定时任务，需要到系统设置里手动允许"
-        KeepAliveItem.BACKGROUND -> "部分 ROM 会限制后台活动，需要手动放行"
+        KeepAliveItem.AUTO_START -> "重启后自动恢复定时任务。系统读不到真实状态，点“请求”会跳到厂商的自启动管理页"
+        KeepAliveItem.BACKGROUND -> "在耗电管理里选“完全允许”，否则息屏后可能被一刀切。各家叫法不同，点“请求”直达"
         KeepAliveItem.ACCESSIBILITY -> "作为兜底：被系统回收后自动把应用重新拉起来"
     }
 
@@ -62,8 +63,9 @@ object KeepAliveManager {
                 val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.canScheduleExactAlarms() else true
             }
-            KeepAliveItem.AUTO_START -> isAutoStartAllowed(context)
-            KeepAliveItem.BACKGROUND -> !isBackgroundRestricted(context)
+            KeepAliveItem.AUTO_START -> !hasVendorManager(context)
+            KeepAliveItem.BACKGROUND ->
+                !isBackgroundRestricted(context) && !hasVendorManager(context)
             KeepAliveItem.ACCESSIBILITY -> isAccessibilityServiceEnabled(context)
         }
     }.getOrDefault(false)
@@ -75,21 +77,19 @@ object KeepAliveManager {
     fun isRuntimePermission(item: KeepAliveItem): Boolean =
         item == KeepAliveItem.NOTIFICATION
 
-    private fun isAutoStartAllowed(context: Context): Boolean {
-        // 系统层面没有统一 API。国产 ROM 各自有自启动管理器：
-        // 有管理器的机型默认视为需要用户手动确认，没有的就当不受限。
-        val managers = listOf(
-            "com.miui.securitycenter",
-            "com.huawei.systemmanager",
-            "com.coloros.safecenter",
-            "com.oppo.safe",
-            "com.vivo.permissionmanager",
-            "com.iqoo.secure"
-        )
-        val hasManager = managers.any { pkg ->
-            runCatching { context.packageManager.getApplicationInfo(pkg, 0) }.isSuccess
-        }
-        return !hasManager
+    private val VENDOR_MANAGERS = listOf(
+        "com.miui.securitycenter",
+        "com.huawei.systemmanager",
+        "com.coloros.safecenter",
+        "com.oppo.safe",
+        "com.vivo.permissionmanager",
+        "com.iqoo.secure",
+        "com.samsung.android.lool",
+        "com.meizu.safe"
+    )
+
+    private fun hasVendorManager(context: Context): Boolean = VENDOR_MANAGERS.any { pkg ->
+        runCatching { context.packageManager.getApplicationInfo(pkg, 0) }.isSuccess
     }
 
     private fun isBackgroundRestricted(context: Context): Boolean {
@@ -109,6 +109,15 @@ object KeepAliveManager {
     // ---------- 跳转 ----------
 
     fun openSettingsFor(context: Context, item: KeepAliveItem) {
+        // 自启动、耗电管理没有统一 API，只能一家一家试
+        if (item == KeepAliveItem.AUTO_START) {
+            openAutoStartManager(context)
+            return
+        }
+        if (item == KeepAliveItem.BACKGROUND) {
+            openPowerManager(context)
+            return
+        }
         val intent = when (item) {
             KeepAliveItem.BATTERY -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
                 .setData(Uri.parse("package:${context.packageName}"))
@@ -116,13 +125,11 @@ object KeepAliveManager {
                 Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
                     .setData(Uri.parse("package:${context.packageName}"))
             else Intent(Settings.ACTION_SETTINGS)
-            KeepAliveItem.AUTO_START -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                .setData(Uri.parse("package:${context.packageName}"))
-            KeepAliveItem.BACKGROUND -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                .setData(Uri.parse("package:${context.packageName}"))
             KeepAliveItem.ACCESSIBILITY -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             KeepAliveItem.NOTIFICATION -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+            else -> Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(Uri.parse("package:${context.packageName}"))
         }
         runCatching {
             if (item != KeepAliveItem.ACCESSIBILITY) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -138,29 +145,75 @@ object KeepAliveManager {
     }
 
     fun openAutoStartManager(context: Context) {
-        val intents = listOf(
-            Intent().setComponent(
-                android.content.ComponentName(
-                    "com.miui.securitycenter",
-                    "com.miui.permcenter.autostart.AutoStartManagementActivity"
-                )
-            ),
-            Intent().setComponent(
-                android.content.ComponentName(
-                    "com.huawei.systemmanager",
-                    "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
-                )
-            ),
-            Intent().setComponent(
-                android.content.ComponentName(
-                    "com.coloros.safecenter",
-                    "com.coloros.safecenter.permission.startup.StartupAppListActivity"
-                )
-            )
+        // 各家 ROM 的自启动管理页，按顺序试，谁先打开算谁的
+        val entries = listOf(
+            "com.miui.securitycenter" to "com.miui.permcenter.autostart.AutoStartManagementActivity",
+            "com.huawei.systemmanager" to "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity",
+            "com.huawei.systemmanager" to "com.huawei.systemmanager.optimize.process.ProtectActivity",
+            "com.coloros.safecenter" to "com.coloros.safecenter.permission.startup.StartupAppListActivity",
+            "com.coloros.safecenter" to "com.coloros.safecenter.startupapp.StartupAppListActivity",
+            "com.oppo.safe" to "com.oppo.safe.permission.startup.StartupAppListActivity",
+            "com.vivo.permissionmanager" to "com.vivo.permissionmanager.activity.BgStartUpManagerActivity",
+            "com.oneplus.security" to "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity",
+            "com.samsung.android.lool" to "com.samsung.android.lool.activity.SmManagerActivity",
+            "com.meizu.safe" to "com.meizu.safe.permission.SmartBGActivity"
         )
-        for (i in intents) {
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            if (runCatching { context.startActivity(i) }.isSuccess) return
+        for ((pkg, cls) in entries) {
+            val intent = Intent().setComponent(android.content.ComponentName(pkg, cls))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (runCatching { context.startActivity(intent) }.isSuccess) {
+                LogStore.info(context, "KEEPALIVE", "已跳转自启动管理：$pkg")
+                return
+            }
+        }
+        LogStore.warn(context, "KEEPALIVE", "没找到厂商自启动管理页，退回应用详情")
+        openAppDetail(context)
+    }
+
+    /**
+     * 耗电管理。用户要的是「耗电管理 → 完全允许」那一项，
+     * 各家入口不同，逐个试，最后退回应用详情让用户自己点电池。
+     */
+    fun openPowerManager(context: Context) {
+        val pkg = context.packageName
+        val label = runCatching {
+            val ai = context.packageManager.getApplicationInfo(pkg, 0)
+            context.packageManager.getApplicationLabel(ai).toString()
+        }.getOrDefault("StarWOL")
+
+        val candidates = listOf(
+            // MIUI：省电策略
+            Intent().setComponent(
+                android.content.ComponentName(
+                    "com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"
+                )
+            ).putExtra("package_name", pkg).putExtra("package_label", label),
+            // ColorOS / realme：应用耗电管理
+            Intent().setComponent(
+                android.content.ComponentName(
+                    "com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerUsageModelActivity"
+                )
+            ),
+            Intent().setComponent(
+                android.content.ComponentName(
+                    "com.coloros.oppoguardelf", "com.coloros.powermanager.fuelgaue.PowerConsumptionActivity"
+                )
+            ),
+            // vivo：后台耗电管理
+            Intent().setComponent(
+                android.content.ComponentName(
+                    "com.vivo.abe", "com.vivo.applicationbehaviorengine.ui.ExcessivePowerManagerActivity"
+                )
+            ),
+            // 通用：应用详情页（里面有电池一项）
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(Uri.parse("package:$pkg"))
+        )
+        for (intent in candidates) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (runCatching { context.startActivity(intent) }.isSuccess) {
+                LogStore.info(context, "KEEPALIVE", "已跳转耗电管理：${intent.component?.packageName ?: "应用详情"}")
+                return
+            }
         }
         openAppDetail(context)
     }
@@ -192,18 +245,14 @@ object KeepAliveManager {
 
     /**
      * 保活要执行的全部命令。
-     * 只动 com.starchen.wol 自己：Doze 白名单、待机桶、两条后台 op。
+     * 只动应用自己：Doze 白名单 + 两条后台 op。
+     * 不碰待机桶（set-standby-bucket active）—— 那条会让系统一直把你当活跃应用，最费电。
      */
     fun keepAlivePlan(pkg: String): List<RootCommand> = listOf(
         RootCommand(
             label = "加入 Doze 白名单",
             shell = "cmd deviceidle whitelist +$pkg",
             revertShell = "cmd deviceidle whitelist -$pkg"
-        ),
-        RootCommand(
-            label = "待机桶设为 active",
-            shell = "am set-standby-bucket $pkg active",
-            revertShell = "am set-standby-bucket $pkg 10"
         ),
         RootCommand(
             label = "允许后台活动",
@@ -220,7 +269,6 @@ object KeepAliveManager {
     /** 执行后核对（只读） */
     fun verifyPlan(pkg: String): List<RootCommand> = listOf(
         RootCommand("核对 Doze 白名单", "dumpsys deviceidle whitelist"),
-        RootCommand("核对待机桶", "am get-standby-bucket $pkg"),
         RootCommand("核对后台 op", "cmd appops get $pkg RUN_IN_BACKGROUND")
     )
 

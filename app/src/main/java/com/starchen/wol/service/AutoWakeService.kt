@@ -78,7 +78,6 @@ class AutoWakeService : Service() {
         }
         startForeground(NOTIF_ID, buildNotification())
         Scheduler.scheduleAll(this)
-        KeepAliveJobService.schedule(this)
         if (!startLogged) {
             startLogged = true
             LogStore.info(this, "SERVICE", "保活服务启动")

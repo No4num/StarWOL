@@ -22,7 +22,6 @@ class BootReceiver : BroadcastReceiver() {
                 } else {
                     Scheduler.scheduleAll(context)
                     AutoWakeService.start(context)
-                    KeepAliveJobService.schedule(context)
                 }
             }.onFailure { Log.e("StarWol.Boot", "恢复失败: ${it.message}") }
             pending.finish()

@@ -49,11 +49,6 @@
             android:foregroundServiceType="dataSync" />
 
         <service
-            android:name=".service.KeepAliveJobService"
-            android:exported="false"
-            android:permission="android.permission.BIND_JOB_SERVICE" />
-
-        <service
             android:name=".service.KeepAliveAccessibilityService"
             android:exported="false"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

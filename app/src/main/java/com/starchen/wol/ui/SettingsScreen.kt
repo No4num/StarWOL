@@ -196,7 +196,7 @@ fun SettingsScreen(
                         HintCard(
                             tint = Color(0xFF20170F),
                             iconTint = Color(0xFFFFB86B),
-                            text = "root 只做四件事：把自己加进 Doze 白名单、待机桶设为 active、允许两条后台 op。不动全局设置，不碰其他应用。",
+                            text = "root 只做三件事：把自己加进 Doze 白名单、允许两条后台 op。不动全局设置，不碰其他应用。",
                             textColor = Color(0xFFC9B49B)
                         )
                         Spacer(Modifier.height(12.dp))
@@ -490,7 +490,7 @@ fun SettingsScreen(
     if (confirmRevert) {
         ConfirmDialog(
             title = "撤销 root 保活",
-            body = "会把本应用从 Doze 白名单移除、待机桶恢复默认、两条后台 op 设回 default。不会影响其他应用。",
+            body = "会把本应用从 Doze 白名单移除、两条后台 op 设回 default。不会影响其他应用。",
             confirmText = "撤销",
             onConfirm = {
                 confirmRevert = false
