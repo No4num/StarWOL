@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Power
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.ToggleOn
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -298,10 +299,10 @@ private fun DeviceCard(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Outlined.Power,
+                    Icons.Outlined.ToggleOn,
                     contentDescription = "唤醒 ${device.name}",
                     tint = Accent,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(26.dp)
                 )
             }
             Spacer(Modifier.width(10.dp))

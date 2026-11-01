@@ -35,6 +35,12 @@ class AutoWakeService : Service() {
     /** root 保活只在结果发生变化时记一笔，避免服务被反复拉起时刷屏 */
     private var rootAppliedOkOnce = false
 
+    /** 服务实例第一次收到 START 才记日志，重复 start（无障碍 / 任务调度）不刷屏 */
+    private var startLogged = false
+
+    /** 用户主动停止时不再安排复活 */
+    private var userStopped = false
+
     companion object {
         private const val TAG = "StarWol.Service"
         const val CHANNEL_ID = "starwol_keepalive"
@@ -65,13 +71,18 @@ class AutoWakeService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            userStopped = true
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
         startForeground(NOTIF_ID, buildNotification())
         Scheduler.scheduleAll(this)
-        LogStore.info(this, "SERVICE", "保活服务启动")
+        KeepAliveJobService.schedule(this)
+        if (!startLogged) {
+            startLogged = true
+            LogStore.info(this, "SERVICE", "保活服务启动")
+        }
         scope.launch { applyRootIfNeeded() }
         return START_STICKY
     }
@@ -135,6 +146,12 @@ class AutoWakeService : Service() {
     }
 
     override fun onDestroy() {
+        // 服务被系统回收时也挂一个复活闹钟；START_STICKY 有概率不生效，闹钟更硬
+        if (!userStopped) {
+            LogStore.info(this, "SERVICE", "服务被销毁，安排 3 秒后复活")
+            ReviveReceiver.cancel(this)
+            ReviveReceiver.schedule(this, 3_000L)
+        }
         scope.cancel()
         super.onDestroy()
     }

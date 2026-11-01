@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.starchen.wol.data.WorkMode
 import com.starchen.wol.service.KeepAliveItem
 import com.starchen.wol.service.KeepAliveManager
+import com.starchen.wol.service.KeepAliveModule
 import com.starchen.wol.service.KeepAliveState
 import com.starchen.wol.ui.components.SegmentedMode
 import com.starchen.wol.ui.theme.Accent
@@ -302,6 +303,21 @@ fun SettingsScreen(
 
                             Spacer(Modifier.height(8.dp))
                             GhostButton("撤销 root 保活（恢复默认）") { confirmRevert = true }
+
+                            Spacer(Modifier.height(14.dp))
+                            Text(
+                                "进程层面的兜底",
+                                color = TextSecondary,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            Text(
+                                "上面的白名单只能让系统不主动杀你。真要“杀了还能活”，得让 root 侧替你看门。",
+                                color = TextTertiary,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            GhostButton("导出守护模块（Magisk）") { exportKeepAliveModule(context) }
                         }
 
                         lastResult?.let { batch ->
@@ -501,8 +517,23 @@ fun SettingsScreen(
     }
 }
 
-private fun exportLogs(context: android.content.Context) {
-    val file = LogStore.logFile(context)
+private fun exportKeepAliveModule(context: android.content.Context) {
+    val file = KeepAliveModule.build(context) ?: return
+    runCatching {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "StarWOL 守护模块")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "导出守护模块"))
+    }.onFailure {
+        LogStore.error(context, "ROOT", "导出守护模块失败：${it.message}")
+    }
+}
+
+private fun exportLogs(context: android.content.Context) {    val file = LogStore.logFile(context)
     if (!file.exists() || file.length() == 0L) {
         LogStore.warn(context, "LOG", "导出失败：日志文件为空")
         return
