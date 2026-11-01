@@ -1,0 +1,19 @@
+# 构建产物
+build/
+.gradle/
+.kotlin/
+*.iml
+.idea/
+.local
+*.apk
+
+# 本机环境，别提交
+local.properties
+.toolchain/
+.keystore/
+
+# 系统垃圾
+.DS_Store
+Thumbs.db
+*.log
+captures/

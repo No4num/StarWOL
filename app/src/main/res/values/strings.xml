@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">StarWOL</string>
+
+    <string name="keepalive_channel">定时唤醒</string>
+    <string name="keepalive_channel_desc">用于保持定时唤醒任务存活</string>
+    <string name="keepalive_title">StarWOL 正在守护定时唤醒</string>
+    <string name="keepalive_text">下拉可查看，划掉应用后仍会尽量保持</string>
+
+    <string name="accessibility_description">仅用于保活：在应用被系统回收后帮助重新拉起定时唤醒服务。不会读取屏幕内容。</string>
+</resources>
