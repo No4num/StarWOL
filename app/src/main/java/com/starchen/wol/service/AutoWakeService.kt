@@ -32,6 +32,9 @@ class AutoWakeService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /** root 保活只在结果发生变化时记一笔，避免服务被反复拉起时刷屏 */
+    private var rootAppliedOkOnce = false
+
     companion object {
         private const val TAG = "StarWol.Service"
         const val CHANNEL_ID = "starwol_keepalive"
@@ -78,6 +81,8 @@ class AutoWakeService : Service() {
         if (settings.workMode == WorkMode.ROOT && KeepAliveManager.isRootAvailable()) {
             val result = KeepAliveManager.applyRootKeepAlive(this)
             val okCount = result.steps.count { it.ok }
+            if (result.allOk && rootAppliedOkOnce) return
+            rootAppliedOkOnce = result.allOk
             LogStore.info(
                 this, "ROOT",
                 "启动时自动应用保活：$okCount/${result.steps.size} 成功"
@@ -121,11 +126,11 @@ class AutoWakeService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // 被划掉后尽量爬起来（受系统限制不一定成功）
-        scope.launch {
-            delay(1500)
-            start(this@AutoWakeService)
-        }
+        // 从最近任务里划掉：先取消复活闹钟避免重复，再挂一个新的。
+        // 用系统闹钟而不是 delay，是因为进程可能在 delay 期间就被 ROM 杀了。
+        LogStore.info(this, "SERVICE", "任务被划掉，安排 2 秒后复活")
+        ReviveReceiver.cancel(this)
+        ReviveReceiver.schedule(this, 2_000L)
         super.onTaskRemoved(rootIntent)
     }
 

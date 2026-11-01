@@ -4,6 +4,7 @@ import android.Manifest
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -23,13 +24,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -126,6 +130,11 @@ private fun AppRoot(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val logs by viewModel.logs.collectAsStateWithLifecycle()
 
+    // 二级页面接管系统返回键与返回手势，避免直接退出到桌面
+    BackHandler(enabled = screen !is Screen.Home) {
+        screen = Screen.Home
+    }
+
     AnimatedContent(
         targetState = screen,
         transitionSpec = {
@@ -134,7 +143,12 @@ private fun AppRoot(
         },
         label = "nav"
     ) { target ->
-        Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color(0xFF0B0C0E))
+                .windowInsetsPadding(WindowInsets.systemBars)
+        ) {
             when (target) {
                 is Screen.Home -> HomeScreen(
                     devices = devices,

@@ -89,7 +89,7 @@ fun HomeScreen(
                     items(devices, key = { it.id }) { device ->
                         DeviceCard(
                             device = device,
-                            onClick = { onWakeDevice(device) },
+                            onWake = { onWakeDevice(device) },
                             onEdit = { onEditDevice(device) },
                             onLongClick = { pendingDelete = device }
                         )
@@ -210,7 +210,7 @@ private fun EmptyState(modifier: Modifier = Modifier) {
 @Composable
 private fun DeviceCard(
     device: Device,
-    onClick: () -> Unit,
+    onWake: () -> Unit,
     onEdit: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -224,12 +224,12 @@ private fun DeviceCard(
                 )
             )
             .border(1.dp, Color(0xFF22252A), RoundedCornerShape(20.dp))
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(onClick = {}, onLongClick = onLongClick)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 18.dp, end = 6.dp, top = 16.dp, bottom = 16.dp),
+                .padding(start = 18.dp, end = 14.dp, top = 16.dp, bottom = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -287,12 +287,38 @@ private fun DeviceCard(
                     }
                 }
             }
-            IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
+            Spacer(Modifier.width(12.dp))
+            // 唤醒：给足点击面积，浅青底
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(AccentDim)
+                    .clickable(onClick = onWake),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Outlined.Power,
+                    contentDescription = "唤醒 ${device.name}",
+                    tint = Accent,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            // 编辑：和唤醒同高的方块底，不再是一个孤零零的小图标
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Surface1)
+                    .clickable(onClick = onEdit),
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(
                     Icons.Outlined.Edit,
-                    contentDescription = "编辑",
-                    tint = TextTertiary,
-                    modifier = Modifier.size(18.dp)
+                    contentDescription = "编辑 ${device.name}",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
