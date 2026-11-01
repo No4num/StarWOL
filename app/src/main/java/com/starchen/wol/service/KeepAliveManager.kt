@@ -28,7 +28,7 @@ enum class KeepAliveItem {
     ACCESSIBILITY       // 无障碍（兜底拉起）
 }
 
-data class KeepAliveState(val item: KeepAliveItem, val granted: Boolean)
+data class KeepAliveState(val item: KeepAliveItem, val granted: Boolean?)
 
 object KeepAliveManager {
 
@@ -36,7 +36,7 @@ object KeepAliveManager {
         KeepAliveItem.NOTIFICATION -> "通知权限"
         KeepAliveItem.BATTERY -> "忽略电池优化"
         KeepAliveItem.EXACT_ALARM -> "精确闹钟"
-        KeepAliveItem.AUTO_START -> "开机自启动"
+        KeepAliveItem.AUTO_START -> "自启动"
         KeepAliveItem.BACKGROUND -> "耗电管理 · 完全允许"
         KeepAliveItem.ACCESSIBILITY -> "无障碍服务"
     }
@@ -45,12 +45,18 @@ object KeepAliveManager {
         KeepAliveItem.NOTIFICATION -> "前台服务需要常驻通知，否则定时唤醒会被系统掐掉"
         KeepAliveItem.BATTERY -> "允许应用在电池优化中豁免，避免息屏后被冻结"
         KeepAliveItem.EXACT_ALARM -> "定时唤醒到点要准，非精确闹钟可能延迟几分钟"
-        KeepAliveItem.AUTO_START -> "重启后自动恢复定时任务。系统读不到真实状态，点“请求”会跳到厂商的自启动管理页"
-        KeepAliveItem.BACKGROUND -> "在耗电管理里选“完全允许”，否则息屏后可能被一刀切。各家叫法不同，点“请求”直达"
+        KeepAliveItem.AUTO_START -> "允许应用自启动。系统没有查询接口，读不到真实状态，点“去确认”跳到厂商的自启动管理页"
+        KeepAliveItem.BACKGROUND -> "在耗电管理里选“完全允许”，否则息屏后可能被一刀切。系统读不到真实状态，点“去确认”直达"
         KeepAliveItem.ACCESSIBILITY -> "作为兜底：被系统回收后自动把应用重新拉起来"
     }
 
-    fun isGranted(context: Context, item: KeepAliveItem): Boolean = runCatching {
+    /**
+     * 真实状态三态：
+     *   true  = 明确已获得
+     *   false = 明确未获得
+     *   null  = 系统没有查询接口，读不到（自启动、厂商耗电管理）
+     */
+    fun isGranted(context: Context, item: KeepAliveItem): Boolean? = runCatching {
         when (item) {
             KeepAliveItem.NOTIFICATION ->
                 ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
@@ -63,12 +69,13 @@ object KeepAliveManager {
                 val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.canScheduleExactAlarms() else true
             }
-            KeepAliveItem.AUTO_START -> !hasVendorManager(context)
-            KeepAliveItem.BACKGROUND ->
-                !isBackgroundRestricted(context) && !hasVendorManager(context)
+            // 系统没有对外暴露查询接口，只能如实显示“未知”
+            KeepAliveItem.AUTO_START -> null
+            // 标准 API 只能看到“后台受限”，看不到厂商的省电策略；受限时能确定，否则未知
+            KeepAliveItem.BACKGROUND -> if (isBackgroundRestricted(context)) false else null
             KeepAliveItem.ACCESSIBILITY -> isAccessibilityServiceEnabled(context)
         }
-    }.getOrDefault(false)
+    }.getOrNull()
 
     fun allStates(context: Context): List<KeepAliveState> =
         KeepAliveItem.entries.map { KeepAliveState(it, isGranted(context, it)) }
@@ -76,21 +83,6 @@ object KeepAliveManager {
     /** 普通权限 / 需要跳系统设置的能力 */
     fun isRuntimePermission(item: KeepAliveItem): Boolean =
         item == KeepAliveItem.NOTIFICATION
-
-    private val VENDOR_MANAGERS = listOf(
-        "com.miui.securitycenter",
-        "com.huawei.systemmanager",
-        "com.coloros.safecenter",
-        "com.oppo.safe",
-        "com.vivo.permissionmanager",
-        "com.iqoo.secure",
-        "com.samsung.android.lool",
-        "com.meizu.safe"
-    )
-
-    private fun hasVendorManager(context: Context): Boolean = VENDOR_MANAGERS.any { pkg ->
-        runCatching { context.packageManager.getApplicationInfo(pkg, 0) }.isSuccess
-    }
 
     private fun isBackgroundRestricted(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {

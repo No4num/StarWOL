@@ -83,7 +83,12 @@ fun SettingsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val states = KeepAliveItem.entries.map { KeepAliveState(it, it.name in confirmed) }
+    // 检测优先：能读出真实状态就如实显示；自启动、厂商耗电管理这类读不到的项，
+    // 只有用户亲手确认过才算已获得，否则显示“未知”。
+    val states = KeepAliveItem.entries.map {
+        val detected = KeepAliveManager.isGranted(context, it)
+        KeepAliveState(it, detected ?: (if (it.name in confirmed) true else null))
+    }
     var selectedArchive by remember { mutableStateOf(0) }
     var archives by remember { mutableStateOf(emptyList<LogStore.Archive>()) }
 
@@ -135,7 +140,7 @@ fun SettingsScreen(
                 HintCard(
                     tint = Color(0xFF10202A),
                     iconTint = Accent,
-                    text = "每一项都要你亲手点一次才算确认，这样不会被系统读不到的状态误导。已经确认过的也可以再点一次重新跳转确认 —— 状态不对时就这么做。",
+                    text = "能读到的项会自动显示真实状态。自启动和耗电管理系统没有查询接口，会显示“未知”——点“去确认”跳过去亲手设置一次，回来就记为已获得；状态不对时也可以再点一次重新确认。",
                     textColor = TextSecondary
                 )
                 Spacer(Modifier.height(12.dp))
@@ -355,6 +360,7 @@ private fun HintCard(tint: Color, iconTint: Color, text: String, textColor: Colo
 
 @Composable
 private fun PermissionRow(state: KeepAliveState, onRequest: () -> Unit) {
+    val granted = state.granted
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -379,8 +385,8 @@ private fun PermissionRow(state: KeepAliveState, onRequest: () -> Unit) {
             )
         }
         Spacer(Modifier.width(10.dp))
-        if (state.granted) {
-            Row(
+        when (granted) {
+            true -> Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .background(Success.copy(alpha = 0.16f))
@@ -397,8 +403,16 @@ private fun PermissionRow(state: KeepAliveState, onRequest: () -> Unit) {
                 Spacer(Modifier.width(4.dp))
                 Text("已获得", color = Success, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             }
-        } else {
-            SmallButton("请求", onRequest)
+            else -> Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = if (granted == null) "未知" else "未获得",
+                    color = if (granted == null) TextTertiary else Danger,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(Modifier.height(5.dp))
+                SmallButton(if (granted == null) "去确认" else "请求", onRequest)
+            }
         }
     }
 }
