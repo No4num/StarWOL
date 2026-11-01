@@ -6,9 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.starchen.wol.data.AppSettings
 import com.starchen.wol.data.Device
 import com.starchen.wol.data.WolStore
-import com.starchen.wol.data.WorkMode
 import com.starchen.wol.service.AutoWakeService
-import com.starchen.wol.service.KeepAliveManager
 import com.starchen.wol.service.Scheduler
 import com.starchen.wol.util.LogStore
 import com.starchen.wol.wol.ProbeResult
@@ -79,38 +77,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             WolStore.delete(context, device.id)
             LogStore.info(context, "DEVICE", "删除设备 ${device.name} / ${device.endpoint}")
             withContext(Dispatchers.IO) { Scheduler.cancel(context, device.id) }
-        }
-    }
-
-    fun setWorkMode(mode: WorkMode) {
-        viewModelScope.launch {
-            val previous = settings.value.workMode
-            if (previous == mode) return@launch
-            WolStore.saveSettings(context, settings.value.copy(workMode = mode))
-            LogStore.info(context, "SETTINGS", "工作模式 → ${if (mode == WorkMode.NORMAL) "正常" else "Root"}")
-
-            // 切回正常模式时把之前写进系统的 root 保活全部撤销，不留残留
-            if (previous == WorkMode.ROOT && mode == WorkMode.NORMAL) {
-                withContext(Dispatchers.IO) {
-                    if (!KeepAliveManager.isRootAvailable()) {
-                        LogStore.warn(context, "ROOT", "已切回正常模式，但当前没有 root 权限，撤销未执行")
-                        return@withContext
-                    }
-                    val batch = KeepAliveManager.revertRootKeepAlive(context)
-                    val okCount = batch.steps.count { it.ok }
-                    if (batch.allOk) {
-                        LogStore.info(context, "ROOT", "切回正常模式，已撤销全部 root 保活（$okCount 条）")
-                    } else {
-                        LogStore.warn(
-                            context, "ROOT",
-                            "切回正常模式，撤销完成 $okCount/${batch.steps.size}：" +
-                                batch.steps.filterNot { it.ok }.joinToString("；") { "${it.command.label} ${it.output}" }
-                        )
-                    }
-                }
-            }
-
-            AutoWakeService.start(context)
         }
     }
 

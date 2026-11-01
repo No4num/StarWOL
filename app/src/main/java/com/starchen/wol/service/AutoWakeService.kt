@@ -13,27 +13,13 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.starchen.wol.MainActivity
 import com.starchen.wol.R
-import com.starchen.wol.data.WorkMode
-import com.starchen.wol.data.WolStore
 import com.starchen.wol.util.LogStore
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 
 /**
  * 常驻前台服务：定时唤醒要活着，就得有个东西一直醒着。
- * 正常模式靠系统前台服务 + 白名单，root 模式额外往系统白名单里钉一遍。
+ * 被划掉或被回收时通过复活闹钟拉回来。
  */
 class AutoWakeService : Service() {
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    /** root 保活只在结果发生变化时记一笔，避免服务被反复拉起时刷屏 */
-    private var rootAppliedOkOnce = false
 
     /** 服务实例第一次收到 START 才记日志，重复 start（无障碍 / 任务调度）不刷屏 */
     private var startLogged = false
@@ -82,27 +68,8 @@ class AutoWakeService : Service() {
             startLogged = true
             LogStore.info(this, "SERVICE", "保活服务启动")
         }
-        scope.launch { applyRootIfNeeded() }
         return START_STICKY
     }
-
-    private suspend fun applyRootIfNeeded() {
-        val settings = WolStore.settings(this).first()
-        if (settings.workMode == WorkMode.ROOT && KeepAliveManager.isRootAvailable()) {
-            val result = KeepAliveManager.applyRootKeepAlive(this)
-            val okCount = result.steps.count { it.ok }
-            if (result.allOk && rootAppliedOkOnce) return
-            rootAppliedOkOnce = result.allOk
-            LogStore.info(
-                this, "ROOT",
-                "启动时自动应用保活：$okCount/${result.steps.size} 成功"
-            )
-            result.steps.filterNot { it.ok }.forEach {
-                LogStore.warn(this, "ROOT", "${it.command.label} 失败：${it.output}")
-            }
-        }
-    }
-
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -136,9 +103,7 @@ class AutoWakeService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // 从最近任务里划掉：先取消复活闹钟避免重复，再挂一个新的。
-        // 用系统闹钟而不是 delay，是因为进程可能在 delay 期间就被 ROM 杀了。
-        LogStore.info(this, "SERVICE", "任务被划掉，安排 2 秒后复活")
+        LogStore.info(this, "SERVICE", "任务被划掉，安排复活")
         ReviveReceiver.cancel(this)
         ReviveReceiver.schedule(this, 2_000L)
         super.onTaskRemoved(rootIntent)
@@ -151,9 +116,7 @@ class AutoWakeService : Service() {
             ReviveReceiver.cancel(this)
             ReviveReceiver.schedule(this, 3_000L)
         }
-        scope.cancel()
         super.onDestroy()
     }
-
     override fun onBind(intent: Intent?): IBinder? = null
 }

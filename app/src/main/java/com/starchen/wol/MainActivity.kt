@@ -60,7 +60,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.starchen.wol.data.Device
-import com.starchen.wol.data.WorkMode
 import com.starchen.wol.service.KeepAliveItem
 import com.starchen.wol.service.KeepAliveManager
 import com.starchen.wol.ui.DeviceEditorScreen
@@ -160,17 +159,10 @@ private fun AppRoot(
                 )
 
                 is Screen.Settings -> SettingsScreen(
-                    workMode = settings.workMode,
                     showLogs = settings.showLogs,
                     writeLogs = settings.writeLogs,
                     logs = logs,
                     onBack = { screen = Screen.Home },
-                    onWorkModeChange = { mode ->
-                        viewModel.setWorkMode(mode)
-                        if (mode == WorkMode.NORMAL) {
-                            requestNotificationPermission { }
-                        }
-                    },
                     onShowLogsChange = { viewModel.setShowLogs(it) },
                     onWriteLogsChange = { viewModel.setWriteLogs(it) },
                     onClearLogs = { viewModel.clearLogs() },

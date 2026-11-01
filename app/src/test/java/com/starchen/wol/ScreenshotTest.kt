@@ -3,7 +3,6 @@ package com.starchen.wol
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import com.starchen.wol.data.Device
-import com.starchen.wol.data.WorkMode
 import com.starchen.wol.ui.DeviceEditorScreen
 import com.starchen.wol.ui.HomeScreen
 import com.starchen.wol.ui.SettingsScreen
@@ -111,12 +110,10 @@ class ScreenshotTest {
         paparazzi.snapshot {
             StarWolTheme {
                 SettingsScreen(
-                    workMode = WorkMode.NORMAL,
                     showLogs = true,
                     writeLogs = true,
                     logs = fakeLogs,
                     onBack = {},
-                    onWorkModeChange = {},
                     onShowLogsChange = {},
                     onWriteLogsChange = {},
                     onClearLogs = {},

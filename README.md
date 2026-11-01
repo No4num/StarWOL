@@ -4,34 +4,20 @@
 
 ## 功能
 
-- 设备卡片：点一下发 WOL，长按删除，右上角进入编辑
+- 设备卡片：右侧两个按钮分别唤醒和编辑，长按删除
 - 发送单播 magic packet 到 `IP:端口`，可选再向 `255.255.255.255` 广播一遍
 - 发出后探测目的 IP 的回包（UDP 监听 + ICMP ping + 常见端口探测）
 - 每天定时自动唤醒，滚轮选时间（24h 循环）
-- 工作模式：正常 / Root
-  - 正常模式：逐项申请通知、电池优化豁免、精确闹钟、自启动、后台限制、无障碍
-  - Root 模式：检测 root，把应用写进 Doze 白名单 / 待机桶 / 后台 op 允许列表
+- 保活：设置页逐项申请通知、电池优化豁免、精确闹钟、自启动、耗电管理、无障碍
 - 运行日志：设置页实时查看、导出分享、落盘到应用私有目录，显示与落盘各有开关（默认开）
-
-## Root 模式执行了什么
-
-只有 4 条命令，全部只针对本应用包名，不碰系统全局设置：
-
-```
-cmd deviceidle whitelist +com.starchen.wol
-am set-standby-bucket com.starchen.wol active
-cmd appops set com.starchen.wol RUN_IN_BACKGROUND allow
-cmd appops set com.starchen.wol RUN_ANY_IN_BACKGROUND allow
-```
-
-每条都有对应的撤销命令（`-包名` / `10` / `default`）。执行前会弹确认框列出全部命令，执行后只读核对一遍。子进程用 `su -c` 传数组参数启动，不拼接 shell 字符串，12 秒超时。
+- 二级页支持系统返回键和返回手势
 
 ## 日志
 
 - 内存保留最近 300 条，落盘到 `filesDir/logs/starwol.log`，超过 512KB 滚动为 `.1`
 - 设置页两个开关：显示日志、写入日志文件，默认都开
 - 导出走 FileProvider + 系统分享
-- 埋点覆盖：启动、服务、Root 每条命令、WOL 发送/广播、探测结果、定时排期、设备增删改、设置变更
+- 埋点覆盖：启动、服务、WOL 发送/广播、探测结果、定时排期、设备增删改、设置变更
 
 ## 本地构建
 
@@ -70,12 +56,14 @@ release 默认用工程内 `.keystore/starwol.jks`（密码都是 `starwol`）�
 
 ## 保活说明
 
-WOL 定时任务要活得久，单靠一个 App 是打不过国产 ROM 的。这里做了两层：
+WOL 定时任务要活得久，单靠一个 App 是打不过国产 ROM 的。现在做的是：
 
-1. 前台服务 + 精确闹钟 + 开机广播（正常模式，靠白名单）
-2. root 下把包名写进 `deviceidle whitelist`、`am set-standby-bucket active`、`appops RUN_IN_BACKGROUND`
+1. 精确闹钟（`setExactAndAllowWhileIdle`）——定时唤醒的骨架
+2. 前台服务常驻 + 开机 / 解锁广播重新排期
+3. 前台服务被划掉或回收时，用复活闹钟（AlarmManager）把它拉回来
+4. 设置页逐项申请：通知、电池优化豁免、精确闹钟、自启动、耗电管理、无障碍兜底
 
-设置页里能逐项申请权限，缺哪个补哪个。
+自启动和耗电管理的开关状态系统没有查询接口，所以界面上可能一直显示「未获得」。点进去授权就行，这是 Android 的限制，不是 bug。
 
 ## 目录
 

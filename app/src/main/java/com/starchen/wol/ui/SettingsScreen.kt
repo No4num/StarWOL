@@ -2,10 +2,6 @@ package com.starchen.wol.ui
 
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -54,12 +50,9 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.starchen.wol.data.WorkMode
 import com.starchen.wol.service.KeepAliveItem
 import com.starchen.wol.service.KeepAliveManager
-import com.starchen.wol.service.KeepAliveModule
 import com.starchen.wol.service.KeepAliveState
-import com.starchen.wol.ui.components.SegmentedMode
 import com.starchen.wol.ui.theme.Accent
 import com.starchen.wol.ui.theme.Danger
 import com.starchen.wol.ui.theme.Success
@@ -69,19 +62,15 @@ import com.starchen.wol.ui.theme.TextPrimary
 import com.starchen.wol.ui.theme.TextSecondary
 import com.starchen.wol.ui.theme.TextTertiary
 import com.starchen.wol.util.LogStore
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(
-    workMode: WorkMode,
     showLogs: Boolean,
     writeLogs: Boolean,
     logs: List<LogStore.Entry>,
     onBack: () -> Unit,
-    onWorkModeChange: (WorkMode) -> Unit,
     onShowLogsChange: (Boolean) -> Unit,
     onWriteLogsChange: (Boolean) -> Unit,
     onClearLogs: () -> Unit,
@@ -91,12 +80,6 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
 
     var states by remember { mutableStateOf(KeepAliveManager.allStates(context)) }
-    var rootAvailable by remember { mutableStateOf<Boolean?>(null) }
-    var applying by remember { mutableStateOf(false) }
-    var confirmApply by remember { mutableStateOf(false) }
-    var confirmRevert by remember { mutableStateOf(false) }
-    var lastResult by remember { mutableStateOf<KeepAliveManager.RootBatch?>(null) }
-    var showCommands by remember { mutableStateOf(false) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -108,15 +91,6 @@ fun SettingsScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-
-    LaunchedEffect(workMode) {
-        if (workMode == WorkMode.ROOT && rootAvailable == null) {
-            rootAvailable = withContext(Dispatchers.IO) { KeepAliveManager.isRootAvailable() }
-            if (rootAvailable == true) LogStore.info(context, "ROOT", "检测到 root 可用")
-        }
-    }
-
-    val plan = remember { KeepAliveManager.keepAlivePlan(context.packageName) }
 
     Box(Modifier.fillMaxSize().background(Color(0xFF0B0C0E))) {
         Column(Modifier.fillMaxSize()) {
@@ -144,234 +118,28 @@ fun SettingsScreen(
                     .padding(bottom = 40.dp)
             ) {
                 Spacer(Modifier.height(6.dp))
-                SectionLabel("工作模式")
+                SectionLabel("保活权限")
                 Spacer(Modifier.height(10.dp))
-                SegmentedMode(
-                    options = listOf("正常", "Root"),
-                    selectedIndex = if (workMode == WorkMode.NORMAL) 0 else 1,
-                    onSelect = { idx ->
-                        onWorkModeChange(if (idx == 0) WorkMode.NORMAL else WorkMode.ROOT)
-                    }
+                HintCard(
+                    tint = Color(0xFF10202A),
+                    iconTint = Accent,
+                    text = "下面这些是保活需要的权限，缺一个定时任务都可能被系统掐断。可以逐项点右边的按钮去授权。",
+                    textColor = TextSecondary
                 )
-                Spacer(Modifier.height(18.dp))
-
-                // ---------- 正常模式：权限 ----------
-                AnimatedVisibility(
-                    visible = workMode == WorkMode.NORMAL,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Column {
-                        HintCard(
-                            tint = Color(0xFF10202A),
-                            iconTint = Accent,
-                            text = "下面这些是保活需要的权限，缺一个定时任务都可能被系统掐断。可以逐项点右边的按钮去授权。",
-                            textColor = TextSecondary
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        states.forEach { state ->
-                            PermissionRow(
-                                state = state,
-                                onRequest = {
-                                    onRequestPermission(state.item)
-                                    LogStore.info(context, "PERM", "请求 ${KeepAliveManager.title(state.item)}")
-                                    scope.launch {
-                                        delay(600)
-                                        states = KeepAliveManager.allStates(context)
-                                    }
-                                }
-                            )
-                            Spacer(Modifier.height(8.dp))
-                        }
-                    }
-                }
-
-                // ---------- Root 模式 ----------
-                AnimatedVisibility(
-                    visible = workMode == WorkMode.ROOT,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
-                    Column {
-                        HintCard(
-                            tint = Color(0xFF20170F),
-                            iconTint = Color(0xFFFFB86B),
-                            text = "root 只做三件事：把自己加进 Doze 白名单、允许两条后台 op。不动全局设置，不碰其他应用。",
-                            textColor = Color(0xFFC9B49B)
-                        )
-                        Spacer(Modifier.height(12.dp))
-
-                        // 检测状态
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Surface1)
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    when (rootAvailable) {
-                                        true -> "已获取 root"
-                                        false -> "未检测到 root"
-                                        null -> "检测中…"
-                                    },
-                                    color = when (rootAvailable) {
-                                        true -> Success
-                                        false -> Danger
-                                        null -> TextSecondary
-                                    },
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Spacer(Modifier.height(3.dp))
-                                Text(
-                                    "检测方式是执行 su -c id，会弹系统授权框",
-                                    color = TextTertiary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            if (rootAvailable == false) {
-                                SmallButton("重试") {
-                                    scope.launch {
-                                        rootAvailable = withContext(Dispatchers.IO) {
-                                            KeepAliveManager.isRootAvailable()
-                                        }
-                                    }
-                                }
+                Spacer(Modifier.height(12.dp))
+                states.forEach { state ->
+                    PermissionRow(
+                        state = state,
+                        onRequest = {
+                            onRequestPermission(state.item)
+                            LogStore.info(context, "PERM", "请求 ${KeepAliveManager.title(state.item)}")
+                            scope.launch {
+                                delay(600)
+                                states = KeepAliveManager.allStates(context)
                             }
                         }
-
-                        if (rootAvailable == true) {
-                            Spacer(Modifier.height(12.dp))
-
-                            // 命令预览
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Surface1)
-                                    .clickable { showCommands = !showCommands }
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "将执行 ${plan.size} 条命令",
-                                    color = TextPrimary,
-                                    fontSize = 13.sp,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    if (showCommands) "收起" else "展开",
-                                    color = Accent,
-                                    fontSize = 12.sp
-                                )
-                            }
-                            AnimatedVisibility(visible = showCommands) {
-                                Column(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 8.dp)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(Color(0xFF0D0E11))
-                                        .padding(14.dp)
-                                ) {
-                                    plan.forEach { cmd ->
-                                        Text(
-                                            "› ${cmd.label}",
-                                            color = TextSecondary,
-                                            fontSize = 11.sp,
-                                            modifier = Modifier.padding(bottom = 2.dp)
-                                        )
-                                        Text(
-                                            cmd.shell,
-                                            color = Accent.copy(alpha = 0.75f),
-                                            fontSize = 10.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            modifier = Modifier.padding(bottom = 10.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(Modifier.height(12.dp))
-                            BigButton(
-                                text = if (applying) "正在执行…" else "应用 root 保活",
-                                enabled = !applying
-                            ) { confirmApply = true }
-
-                            Spacer(Modifier.height(8.dp))
-                            GhostButton("撤销 root 保活（恢复默认）") { confirmRevert = true }
-
-                            Spacer(Modifier.height(14.dp))
-                            Text(
-                                "进程层面的兜底",
-                                color = TextSecondary,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(bottom = 4.dp)
-                            )
-                            Text(
-                                "上面的白名单只能让系统不主动杀你。真要“杀了还能活”，得让 root 侧替你看门。",
-                                color = TextTertiary,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                            GhostButton("导出守护模块（Magisk）") { exportKeepAliveModule(context) }
-                        }
-
-                        lastResult?.let { batch ->
-                            Spacer(Modifier.height(12.dp))
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFF0D0E11))
-                                    .padding(14.dp)
-                            ) {
-                                Text(
-                                    "执行结果 ${batch.steps.count { it.ok }}/${batch.steps.size}",
-                                    color = if (batch.allOk) Success else Danger,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                )
-                                batch.steps.forEach { step ->
-                                    Row(Modifier.padding(bottom = 6.dp)) {
-                                        Box(
-                                            Modifier
-                                                .padding(top = 5.dp)
-                                                .size(5.dp)
-                                                .clip(RoundedCornerShape(3.dp))
-                                                .background(if (step.ok) Success else Danger)
-                                        )
-                                        Spacer(Modifier.width(8.dp))
-                                        Column {
-                                            Text(
-                                                step.command.label,
-                                                color = TextPrimary,
-                                                fontSize = 11.sp
-                                            )
-                                            Text(
-                                                step.command.shell,
-                                                color = TextTertiary,
-                                                fontSize = 9.sp,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                            if (step.output.isNotBlank() && step.output != "（无输出）") {
-                                                Text(
-                                                    step.output.take(200),
-                                                    color = TextTertiary,
-                                                    fontSize = 9.sp,
-                                                    fontFamily = FontFamily.Monospace
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    )
+                    Spacer(Modifier.height(8.dp))
                 }
 
                 // ---------- 日志 ----------
@@ -441,7 +209,7 @@ fun SettingsScreen(
 
                 Spacer(Modifier.height(30.dp))
                 Text(
-                    "StarWOL 1.0.1",
+                    "StarWOL 1.0.5",
                     color = TextTertiary,
                     fontSize = 11.sp,
                     modifier = Modifier.fillMaxWidth(),
@@ -449,87 +217,6 @@ fun SettingsScreen(
                 )
             }
         }
-    }
-
-    // 执行前确认
-    if (confirmApply) {
-        ConfirmDialog(
-            title = "确认执行 root 命令",
-            body = plan.joinToString("\n") { "${it.label}\n  ${it.shell}" },
-            confirmText = "执行",
-            onConfirm = {
-                confirmApply = false
-                applying = true
-                scope.launch {
-                    LogStore.info(context, "ROOT", "用户确认，开始应用 root 保活")
-                    val result = withContext(Dispatchers.IO) {
-                        KeepAliveManager.applyRootKeepAlive(context) { step ->
-                            LogStore.append(
-                                context,
-                                if (step.ok) LogStore.Level.INFO else LogStore.Level.ERROR,
-                                "ROOT",
-                                "${step.command.label}: ${step.output.take(300)}"
-                            )
-                        }
-                    }
-                    // 只读核对一遍
-                    val verify = withContext(Dispatchers.IO) {
-                        KeepAliveManager.verifyRootKeepAlive(context)
-                    }
-                    verify.steps.forEach {
-                        LogStore.info(context, "ROOT", "${it.command.label}: ${it.output.take(200)}")
-                    }
-                    lastResult = result
-                    applying = false
-                }
-            },
-            onDismiss = { confirmApply = false }
-        )
-    }
-
-    if (confirmRevert) {
-        ConfirmDialog(
-            title = "撤销 root 保活",
-            body = "会把本应用从 Doze 白名单移除、两条后台 op 设回 default。不会影响其他应用。",
-            confirmText = "撤销",
-            onConfirm = {
-                confirmRevert = false
-                applying = true
-                scope.launch {
-                    LogStore.info(context, "ROOT", "用户确认，撤销 root 保活")
-                    val result = withContext(Dispatchers.IO) {
-                        KeepAliveManager.revertRootKeepAlive(context)
-                    }
-                    result.steps.forEach {
-                        LogStore.append(
-                            context,
-                            if (it.ok) LogStore.Level.INFO else LogStore.Level.ERROR,
-                            "ROOT",
-                            "${it.command.label}: ${it.output.take(300)}"
-                        )
-                    }
-                    lastResult = result
-                    applying = false
-                }
-            },
-            onDismiss = { confirmRevert = false }
-        )
-    }
-}
-
-private fun exportKeepAliveModule(context: android.content.Context) {
-    val file = KeepAliveModule.build(context) ?: return
-    runCatching {
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/zip"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "StarWOL 守护模块")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(Intent.createChooser(intent, "导出守护模块"))
-    }.onFailure {
-        LogStore.error(context, "ROOT", "导出守护模块失败：${it.message}")
     }
 }
 
