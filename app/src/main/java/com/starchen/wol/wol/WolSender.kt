@@ -11,7 +11,6 @@ data class SendStep(val label: String, val ok: Boolean, val detail: String)
 
 data class SendReport(
     val steps: List<SendStep>,
-    val packet: ByteArray? = null,
     val startedAt: Long = System.currentTimeMillis()
 ) {
     val success: Boolean get() = steps.isNotEmpty() && steps.first().ok
@@ -32,22 +31,17 @@ object WolSender {
         return payload
     }
 
-    /**
-     * 单播 →（可选）广播。
-     * socket 会返回给调用方，用来顺带监听回包。
-     */
+    /** 单播 →（可选）广播。发完就把 socket 关掉。 */
     suspend fun send(
         ip: String,
         port: Int,
         mac: String,
         alsoBroadcast: Boolean
-    ): Pair<SendReport, DatagramSocket?> = withContext(Dispatchers.IO) {
+    ): SendReport = withContext(Dispatchers.IO) {
         val steps = mutableListOf<SendStep>()
         val macBytes = MacUtils.toBytes(mac)
         if (macBytes == null) {
-            return@withContext SendReport(
-                listOf(SendStep("MAC 格式错误", false, mac))
-            ) to null
+            return@withContext SendReport(listOf(SendStep("MAC 格式错误", false, mac)))
         }
         val packet = magicPacket(macBytes)
         var socket: DatagramSocket? = null
@@ -75,7 +69,9 @@ object WolSender {
             }
         } catch (e: Exception) {
             steps += SendStep("单播 WOL", false, e.message ?: e.javaClass.simpleName)
+        } finally {
+            runCatching { socket?.close() }
         }
-        SendReport(steps, packet) to socket
+        SendReport(steps)
     }
 }

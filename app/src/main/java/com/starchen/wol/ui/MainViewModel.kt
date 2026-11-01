@@ -9,8 +9,6 @@ import com.starchen.wol.data.WolStore
 import com.starchen.wol.service.AutoWakeService
 import com.starchen.wol.service.Scheduler
 import com.starchen.wol.util.LogStore
-import com.starchen.wol.wol.ProbeResult
-import com.starchen.wol.wol.Prober
 import com.starchen.wol.wol.SendReport
 import com.starchen.wol.wol.WolSender
 import kotlinx.coroutines.Dispatchers
@@ -23,8 +21,7 @@ import kotlinx.coroutines.withContext
 data class WakeUiState(
     val deviceName: String,
     val sending: Boolean,
-    val report: SendReport? = null,
-    val probe: ProbeResult? = null
+    val report: SendReport? = null
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -105,7 +102,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         LogStore.info(context, "WOL", "发送 ${device.name} → ${device.endpoint} / ${device.mac}" +
             if (device.autoBroadcast) " / 含广播" else "")
         viewModelScope.launch {
-            val (report, socket) = WolSender.send(
+            val report = WolSender.send(
                 ip = device.ip,
                 port = device.port,
                 mac = device.mac,
@@ -116,27 +113,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 else LogStore.error(context, "WOL", "${step.label} 失败 ${step.detail}")
             }
             wakeState.value = WakeUiState(device.name, sending = false, report = report)
-
-            val probe = Prober.probe(
-                ip = device.ip,
-                socket = socket,
-                txPacket = report.packet,
-                txPort = device.port
-            )
-            socket?.close()
-            LogStore.info(context, "PROBE", "${device.ip} ${probe.title} · ${probe.summary().replace("\n", " ")}")
-            LogStore.info(context, "ICMP", "${device.ip} ${probe.diagnosis}")
-            if (probe.pingRaw.isNotBlank()) {
-                LogStore.info(
-                    context,
-                    "ICMP",
-                    "原始输出: " + probe.pingRaw.replace("\n", " / ").take(600)
-                )
-            }
-            probe.udpPackets.forEach { r ->
-                LogStore.info(context, "UDP", "回包 ${r.from} ${r.size}B ${r.preview}")
-            }
-            wakeState.value = WakeUiState(device.name, sending = false, report = report, probe = probe)
         }
     }
 

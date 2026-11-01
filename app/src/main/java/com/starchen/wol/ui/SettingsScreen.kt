@@ -23,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
@@ -80,16 +82,25 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
 
     var states by remember { mutableStateOf(KeepAliveManager.allStates(context)) }
+    var selectedArchive by remember { mutableStateOf(0) }
+    var archives by remember { mutableStateOf(emptyList<LogStore.Archive>()) }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 states = KeepAliveManager.allStates(context)
+                archives = LogStore.archives(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(archives) {
+        if (selectedArchive != 0 && archives.none { it.index == selectedArchive }) {
+            selectedArchive = 0
+        }
     }
 
     Box(Modifier.fillMaxSize().background(Color(0xFF0B0C0E))) {
@@ -164,6 +175,19 @@ fun SettingsScreen(
                 AnimatedVisibility(visible = showLogs) {
                     Column {
                         Spacer(Modifier.height(10.dp))
+                        LogSourceSelector(
+                            archives = archives,
+                            selected = selectedArchive,
+                            onSelect = { selectedArchive = it }
+                        )
+                        Spacer(Modifier.height(8.dp))
+
+                        val historyEntries = remember(selectedArchive, archives) {
+                            if (selectedArchive == 0) emptyList()
+                            else LogStore.readArchive(context, selectedArchive)
+                        }
+                        val displayEntries = if (selectedArchive == 0) logs else historyEntries
+
                         Column(
                             Modifier
                                 .fillMaxWidth()
@@ -173,7 +197,7 @@ fun SettingsScreen(
                                 .border(1.dp, Color(0xFF1B1E23), RoundedCornerShape(14.dp))
                                 .padding(12.dp)
                         ) {
-                            if (logs.isEmpty()) {
+                            if (displayEntries.isEmpty()) {
                                 Text("还没有日志", color = TextTertiary, fontSize = 11.sp)
                             } else {
                                 Column(
@@ -181,7 +205,7 @@ fun SettingsScreen(
                                         .fillMaxWidth()
                                         .verticalScroll(rememberScrollState())
                                 ) {
-                                    logs.takeLast(150).forEach { entry ->
+                                    displayEntries.takeLast(150).forEach { entry ->
                                         Text(
                                             entry.format(),
                                             color = when (entry.level) {
@@ -198,9 +222,20 @@ fun SettingsScreen(
                                 }
                             }
                         }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            if (selectedArchive == 0) {
+                                "当前记录 · 共 ${logs.size} 条"
+                            } else {
+                                "历史文件 starwol.$selectedArchive.log · 共 ${displayEntries.size} 条，当前日志仍在正常记录"
+                            },
+                            color = TextTertiary,
+                            fontSize = 10.5.sp,
+                            lineHeight = 15.sp
+                        )
                         Spacer(Modifier.height(10.dp))
                         Row {
-                            SmallButton("导出日志") { exportLogs(context) }
+                            SmallButton("导出当前展示日志") { exportLogs(context, selectedArchive) }
                             Spacer(Modifier.width(10.dp))
                             SmallButton("清空") { onClearLogs() }
                         }
@@ -209,7 +244,7 @@ fun SettingsScreen(
 
                 Spacer(Modifier.height(30.dp))
                 Text(
-                    "StarWOL 1.0.8",
+                    "StarWOL 1.0.9",
                     color = TextTertiary,
                     fontSize = 11.sp,
                     modifier = Modifier.fillMaxWidth(),
@@ -220,7 +255,8 @@ fun SettingsScreen(
     }
 }
 
-private fun exportLogs(context: android.content.Context) {    val file = LogStore.logFile(context)
+private fun exportLogs(context: android.content.Context, index: Int = 0) {
+    val file = LogStore.fileFor(context, index)
     if (!file.exists() || file.length() == 0L) {
         LogStore.warn(context, "LOG", "导出失败：日志文件为空")
         return
@@ -233,10 +269,65 @@ private fun exportLogs(context: android.content.Context) {    val file = LogStor
             putExtra(Intent.EXTRA_SUBJECT, "StarWOL 日志")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "导出日志"))
+        context.startActivity(Intent.createChooser(intent, "导出当前展示日志"))
         LogStore.info(context, "LOG", "导出日志：${file.name} (${file.length()} 字节)")
     }.onFailure {
         LogStore.error(context, "LOG", "导出失败：${it.message}")
+    }
+}
+
+@Composable
+private fun LogSourceSelector(
+    archives: List<LogStore.Archive>,
+    selected: Int,
+    onSelect: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = if (selected == 0) {
+        "当前记录"
+    } else {
+        archives.firstOrNull { it.index == selected }?.label() ?: "前${selected}个"
+    }
+
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Surface1)
+                .clickable { expanded = true }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("查看", color = TextTertiary, fontSize = 11.sp)
+            Spacer(Modifier.width(10.dp))
+            Text(
+                label,
+                color = TextPrimary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
+            Text("▾", color = TextSecondary, fontSize = 12.sp)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("当前记录", fontSize = 13.sp) },
+                onClick = {
+                    onSelect(0)
+                    expanded = false
+                }
+            )
+            archives.forEach { a ->
+                DropdownMenuItem(
+                    text = { Text(a.label(), fontSize = 13.sp) },
+                    onClick = {
+                        onSelect(a.index)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }
 

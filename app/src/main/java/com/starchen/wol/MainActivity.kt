@@ -10,7 +10,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -54,7 +53,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,7 +74,6 @@ import com.starchen.wol.ui.theme.TextPrimary
 import com.starchen.wol.ui.theme.TextSecondary
 import com.starchen.wol.ui.theme.TextTertiary
 import com.starchen.wol.ui.theme.StarWolTheme
-import com.starchen.wol.wol.Prober
 
 class MainActivity : ComponentActivity() {
 
@@ -213,7 +210,6 @@ private fun AppRoot(
 
 @Composable
 private fun WakeDialog(state: WakeUiState, onDismiss: () -> Unit) {
-    var showPackets by remember { mutableStateOf(false) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -287,105 +283,6 @@ private fun WakeDialog(state: WakeUiState, onDismiss: () -> Unit) {
                         }
                     }
 
-                    if (!state.sending) {
-                        Spacer(Modifier.height(4.dp))
-                        Box(
-                            Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(Color(0xFF23262B))
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Outlined.Router,
-                                contentDescription = null,
-                                tint = TextSecondary,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(Modifier.width(7.dp))
-                            Text(
-                                state.probe?.title ?: "探测中…",
-                                color = TextSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            state.probe?.summary() ?: "等待回包…",
-                            color = TextTertiary,
-                            fontSize = 11.sp,
-                            lineHeight = 17.sp
-                        )
-                        state.probe?.takeIf { it.diagnosis.isNotBlank() }?.let { p ->
-                            Spacer(Modifier.height(7.dp))
-                            Text(
-                                p.diagnosis,
-                                color = if (p.pingOk == true) Accent.copy(alpha = 0.9f) else TextTertiary,
-                                fontSize = 11.sp,
-                                lineHeight = 17.sp
-                            )
-                        }
-
-                        val packets = state.probe?.packets.orEmpty()
-                        if (packets.isNotEmpty()) {
-                            Spacer(Modifier.height(12.dp))
-                            Row(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF0D0E11))
-                                    .border(1.dp, Color(0xFF1B1E23), RoundedCornerShape(12.dp))
-                                    .clickable { showPackets = !showPackets }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "原始报文（${packets.size}）",
-                                    color = TextSecondary,
-                                    fontSize = 12.sp,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    if (showPackets) "收起" else "展开",
-                                    color = Accent,
-                                    fontSize = 11.sp
-                                )
-                            }
-                            AnimatedVisibility(visible = showPackets) {
-                                Column(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 8.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(Color(0xFF0A0B0D))
-                                        .padding(10.dp)
-                                ) {
-                                    packets.forEach { rec ->
-                                        Text(
-                                            rec.headline,
-                                            color = Accent.copy(alpha = 0.8f),
-                                            fontSize = 9.5.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            lineHeight = 13.sp
-                                        )
-                                        rec.bytes?.let { b ->
-                                            Text(
-                                                Prober.hexDump(b),
-                                                color = TextTertiary,
-                                                fontSize = 9.sp,
-                                                fontFamily = FontFamily.Monospace,
-                                                lineHeight = 13.sp,
-                                                modifier = Modifier.padding(top = 4.dp)
-                                            )
-                                        }
-                                        Spacer(Modifier.height(8.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
 
                 Spacer(Modifier.height(18.dp))

@@ -30,13 +30,12 @@ class AlarmReceiver : BroadcastReceiver() {
                 } else {
                     LogStore.info(context, "ALARM", "定时唤醒 ${device.name} → ${device.endpoint}")
                     runBlocking {
-                        val (report, socket) = WolSender.send(
+                        val report = WolSender.send(
                             ip = device.ip,
                             port = device.port,
                             mac = device.mac,
                             alsoBroadcast = device.autoBroadcast
                         )
-                        socket?.close()
                         report.steps.forEach { step ->
                             if (step.ok) {
                                 LogStore.info(context, "ALARM", "${step.label} 成功 ${step.detail}")
