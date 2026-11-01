@@ -5,6 +5,8 @@
 ## 功能
 
 - 设备卡片：右侧两个按钮分别唤醒和编辑，长按删除
+- MAC 支持 `AABB-CCDD-EEFF` / `AA-BB-CC-DD-EE-FF` / `AABB:CCDD:EEFF` / `AA:BB:CC:DD:EE:FF`，
+  也可以点「自动获取」从内核 ARP 表读（先填 IP，设备在同网段在线过才读得到）
 - 发送单播 magic packet 到 `IP:端口`，可选再向 `255.255.255.255` 广播一遍
 - 发出后探测目的 IP 的回包（UDP 监听 + ICMP ping + 常见端口探测）
 - 每天定时自动唤醒，滚轮选时间（24h 循环）
