@@ -51,6 +51,8 @@ data class ProbeResult(
     val udpPackets: List<UdpReply> = emptyList(),
     val pingOk: Boolean? = null,
     val pingDetail: String = "",
+    val pingRaw: String = "",
+    val diagnosis: String = "",
     val openPorts: List<Int> = emptyList(),
     val elapsedMs: Long = 0
 ) {
@@ -144,7 +146,7 @@ object Prober {
                 }
             }
 
-            val (pingOk, pingDetail) = pingJob.await()
+            val ping = pingJob.await()
             val hits = portJob.await()
 
             records += PacketRecord(
@@ -153,10 +155,10 @@ object Prober {
                 src = ip,
                 dst = "本机",
                 bytes = null,
-                note = if (pingOk == true) {
-                    "echo reply · ${pingDetail.ifBlank { "通" }}"
+                note = if (ping.ok == true) {
+                    "echo reply · ${ping.detail.ifBlank { "通" }}"
                 } else {
-                    "无响应（系统 ping 拿不到原始帧）"
+                    "无 ICMP 回应 · ${ping.diagnosis}"
                 }
             )
 
@@ -184,8 +186,10 @@ object Prober {
             ProbeResult(
                 packets = records.toList(),
                 udpPackets = udpReplies.toList(),
-                pingOk = pingOk,
-                pingDetail = pingDetail,
+                pingOk = ping.ok,
+                pingDetail = ping.detail,
+                pingRaw = ping.raw,
+                diagnosis = ping.diagnosis,
                 openPorts = hits.map { it.port },
                 elapsedMs = System.currentTimeMillis() - started
             )
@@ -202,8 +206,18 @@ object Prober {
         }
     }
 
-    /** 调系统 ping，普通应用也能用 /system/bin/ping */
-    private fun ping(ip: String, timeoutMs: Long): Pair<Boolean?, String> {
+    private data class PingOutcome(
+        val ok: Boolean?,
+        val detail: String,
+        val raw: String,
+        val diagnosis: String
+    )
+
+    /**
+     * 调系统 ping，普通应用也能用 /system/bin/ping。
+     * 原始输出原样留着 —— 日志里要记，而且诊断结论就是从它里面读出来的。
+     */
+    private fun ping(ip: String, timeoutMs: Long): PingOutcome {
         return try {
             val process = ProcessBuilder(
                 "ping", "-c", "1", "-W", "${(timeoutMs / 1000).coerceAtLeast(1)}", ip
@@ -211,9 +225,52 @@ object Prober {
             val text = BufferedReader(InputStreamReader(process.inputStream)).use { it.readText() }
             val finished = process.waitFor()
             val line = text.lineSequence().firstOrNull { it.contains("bytes from") || it.contains("time=") }
-            (finished == 0) to (line?.trim() ?: if (finished == 0) "通" else "")
+            val ok = finished == 0
+            PingOutcome(
+                ok = ok,
+                detail = line?.trim() ?: if (ok) "通" else "",
+                raw = text.trim(),
+                diagnosis = diagnose(ok, text)
+            )
         } catch (e: Exception) {
-            null to (e.message ?: "")
+            PingOutcome(
+                ok = false,
+                detail = e.message ?: "",
+                raw = "",
+                diagnosis = "ping 没跑起来：${e.message ?: e.javaClass.simpleName}"
+            )
+        }
+    }
+
+    /**
+     * 把 ping 的原始输出翻成人话。
+     *
+     * ICMP 报文本身普通应用是拿不到的（要 raw socket），但 ping 打出来的
+     * 那几行已经包含判定所需的一切：ttl、往返时间、主机/网络不可达、丢包率。
+     */
+    private fun diagnose(ok: Boolean, raw: String): String {
+        val lower = raw.lowercase()
+        if (ok) {
+            val ttl = Regex("ttl=(\\d+)").find(lower)?.groupValues?.get(1)
+            val time = Regex("time=([\\d.]+)").find(lower)?.groupValues?.get(1)
+            return buildString {
+                append("目标有 ICMP 回应")
+                if (ttl != null) append("，ttl=$ttl")
+                if (time != null) append("，往返 ${time}ms")
+                append("。机器在线，这次唤醒大概率成了。")
+            }
+        }
+        return when {
+            lower.contains("destination host unreachable") ->
+                "ICMP 主机不可达：网关说找不到这台机器。多半是 ARP 解析失败 —— IP 不在本网段，或者机器压根没起来。"
+            lower.contains("destination net unreachable") || lower.contains("network is unreachable") ->
+                "网络不可达：本机路由里没有到该网段的路，先检查 WiFi 连没连、IP 填没填错。"
+            lower.contains("100% packet loss") || lower.contains("request timeout") || lower.contains("timed out") ->
+                "1 秒内没有收到任何 ICMP 回应。WOL 刚发出去时机箱还在自检，等半分钟再点一次；如果一直如此，通常是网卡没开 WOL、IP 变了，或者防火墙把 ICMP 丢了。"
+            raw.isBlank() ->
+                "没有输出，系统里可能没有 ping 命令。"
+            else ->
+                "没有 ICMP 回应：" + raw.lineSequence().lastOrNull { it.isNotBlank() }.orEmpty().trim().take(80)
         }
     }
 

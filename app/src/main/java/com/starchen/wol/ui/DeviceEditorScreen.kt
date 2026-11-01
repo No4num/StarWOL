@@ -37,7 +37,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -60,10 +59,7 @@ import com.starchen.wol.ui.theme.Surface2
 import com.starchen.wol.ui.theme.TextPrimary
 import com.starchen.wol.ui.theme.TextSecondary
 import com.starchen.wol.ui.theme.TextTertiary
-import com.starchen.wol.util.LogStore
-import com.starchen.wol.wol.ArpLookup
 import com.starchen.wol.wol.MacUtils
-import kotlinx.coroutines.launch
 
 @Composable
 fun DeviceEditorScreen(
@@ -81,11 +77,7 @@ fun DeviceEditorScreen(
     var minute by rememberSaveable { mutableStateOf(existing?.autoWakeMinute ?: 0) }
     var macTouched by remember { mutableStateOf(false) }
     var submitted by remember { mutableStateOf(false) }
-    var arpBusy by remember { mutableStateOf(false) }
-    var arpHint by remember { mutableStateOf<String?>(null) }
-    var arpHintOk by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
-    val scope = rememberCoroutineScope()
 
     val macValid = MacUtils.normalize(mac) != null
     val ipValid = isValidIpv4(ip.trim())
@@ -182,62 +174,6 @@ fun DeviceEditorScreen(
                             color = if (macValid) Accent else TextSecondary,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .height(36.dp)
-                            .clip(RoundedCornerShape(11.dp))
-                            .background(if (arpBusy) Surface2 else Accent.copy(alpha = 0.13f))
-                            .clickable(enabled = !arpBusy) {
-                                val target = ip.trim()
-                                if (!isValidIpv4(target)) {
-                                    arpHintOk = false
-                                    arpHint = "先填一个正确的 IP"
-                                    return@clickable
-                                }
-                                arpBusy = true
-                                arpHint = null
-                                scope.launch {
-                                    val found = ArpLookup.resolve(target)
-                                    arpBusy = false
-                                    if (found != null) {
-                                        mac = found
-                                        macTouched = true
-                                        arpHintOk = true
-                                        arpHint = "已获取 $found"
-                                        LogStore.info(context, "ARP", "$target → $found")
-                                    } else {
-                                        arpHintOk = false
-                                        arpHint = if (ArpLookup.readable()) {
-                                            "没找到记录，设备可能不在线"
-                                        } else {
-                                            "系统不允许读 ARP 表，只能手填"
-                                        }
-                                        LogStore.warn(context, "ARP", "获取 $target 的 MAC 失败")
-                                    }
-                                }
-                            }
-                            .padding(horizontal = 14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            if (arpBusy) "获取中…" else "自动获取",
-                            color = if (arpBusy) TextTertiary else Accent,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    arpHint?.let { hint ->
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            hint,
-                            color = if (arpHintOk) Accent.copy(alpha = 0.85f) else TextTertiary,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
                         )
                     }
                 }

@@ -121,6 +121,9 @@ private sealed interface Screen {
     data class Editor(val device: Device?) : Screen
 }
 
+private val Screen.depth: Int
+    get() = if (this is Screen.Home) 0 else 1
+
 @Composable
 private fun AppRoot(
     viewModel: MainViewModel,
@@ -140,8 +143,21 @@ private fun AppRoot(
     AnimatedContent(
         targetState = screen,
         transitionSpec = {
-            (slideInHorizontally(tween(260)) { it / 4 } + fadeIn(tween(200)))
-                .togetherWith(slideOutHorizontally(tween(220)) { -it / 6 } + fadeOut(tween(160)))
+            // 进二级页：新页从右边推入，旧页往左让位；
+            // 返回主页：反过来，旧页往右退出，主页从左边滑回来。
+            val forward = targetState.depth >= initialState.depth
+            val enterSlide = if (forward) {
+                slideInHorizontally(tween(260)) { it / 4 }
+            } else {
+                slideInHorizontally(tween(260)) { -it / 4 }
+            }
+            val exitSlide = if (forward) {
+                slideOutHorizontally(tween(220)) { -it / 6 }
+            } else {
+                slideOutHorizontally(tween(220)) { it / 4 }
+            }
+            (enterSlide + fadeIn(tween(200)))
+                .togetherWith(exitSlide + fadeOut(tween(160)))
         },
         label = "nav"
     ) { target ->
@@ -302,6 +318,15 @@ private fun WakeDialog(state: WakeUiState, onDismiss: () -> Unit) {
                             fontSize = 11.sp,
                             lineHeight = 17.sp
                         )
+                        state.probe?.takeIf { it.diagnosis.isNotBlank() }?.let { p ->
+                            Spacer(Modifier.height(7.dp))
+                            Text(
+                                p.diagnosis,
+                                color = if (p.pingOk == true) Accent.copy(alpha = 0.9f) else TextTertiary,
+                                fontSize = 11.sp,
+                                lineHeight = 17.sp
+                            )
+                        }
 
                         val packets = state.probe?.packets.orEmpty()
                         if (packets.isNotEmpty()) {

@@ -5,12 +5,13 @@
 ## 功能
 
 - 设备卡片：右侧两个按钮分别唤醒和编辑，长按删除
-- MAC 支持 `AABB-CCDD-EEFF` / `AA-BB-CC-DD-EE-FF` / `AABB:CCDD:EEFF` / `AA:BB:CC:DD:EE:FF`，
-  也可以点「自动获取」从内核 ARP 表读（先填 IP，设备在同网段在线过才读得到）
+- MAC 支持 `AABB-CCDD-EEFF` / `AA-BB-CC-DD-EE-FF` / `AABB:CCDD:EEFF` / `AA:BB:CC:DD:EE:FF`，填完点「完成」归一化
 - 发送单播 magic packet 到 `IP:端口`，可选再向 `255.255.255.255` 广播一遍
 - 发出后探测目的 IP 的回包（UDP 监听 + ICMP ping + 常见端口探测）
 - 唤醒弹窗里可以展开「原始报文」，按 hexdump 显示抓到的字节：自己发的 magic packet、
   UDP 回包、TCP banner。ICMP 走系统 ping，拿不到原始帧，只能记一行文本
+- ICMP 诊断：通了会报 ttl 和往返时间；不通会区分主机不可达 / 网络不可达 / 超时丢包，
+  并把 ping 的原始输出写进日志
 - 每天定时自动唤醒，滚轮选时间（24h 循环）
 - 保活：设置页逐项申请通知、电池优化豁免、精确闹钟、自启动、耗电管理、无障碍
 - 运行日志：设置页实时查看、导出分享、落盘到应用私有目录，显示与落盘各有开关（默认开）

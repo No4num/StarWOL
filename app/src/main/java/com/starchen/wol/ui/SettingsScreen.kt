@@ -209,7 +209,7 @@ fun SettingsScreen(
 
                 Spacer(Modifier.height(30.dp))
                 Text(
-                    "StarWOL 1.0.7",
+                    "StarWOL 1.0.8",
                     color = TextTertiary,
                     fontSize = 11.sp,
                     modifier = Modifier.fillMaxWidth(),

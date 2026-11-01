@@ -125,6 +125,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
             socket?.close()
             LogStore.info(context, "PROBE", "${device.ip} ${probe.title} · ${probe.summary().replace("\n", " ")}")
+            LogStore.info(context, "ICMP", "${device.ip} ${probe.diagnosis}")
+            if (probe.pingRaw.isNotBlank()) {
+                LogStore.info(
+                    context,
+                    "ICMP",
+                    "原始输出: " + probe.pingRaw.replace("\n", " / ").take(600)
+                )
+            }
+            probe.udpPackets.forEach { r ->
+                LogStore.info(context, "UDP", "回包 ${r.from} ${r.size}B ${r.preview}")
+            }
             wakeState.value = WakeUiState(device.name, sending = false, report = report, probe = probe)
         }
     }
