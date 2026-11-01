@@ -11,6 +11,7 @@ data class SendStep(val label: String, val ok: Boolean, val detail: String)
 
 data class SendReport(
     val steps: List<SendStep>,
+    val packet: ByteArray? = null,
     val startedAt: Long = System.currentTimeMillis()
 ) {
     val success: Boolean get() = steps.isNotEmpty() && steps.first().ok
@@ -75,6 +76,6 @@ object WolSender {
         } catch (e: Exception) {
             steps += SendStep("单播 WOL", false, e.message ?: e.javaClass.simpleName)
         }
-        SendReport(steps) to socket
+        SendReport(steps, packet) to socket
     }
 }

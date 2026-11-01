@@ -117,7 +117,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             wakeState.value = WakeUiState(device.name, sending = false, report = report)
 
-            val probe = Prober.probe(device.ip, socket)
+            val probe = Prober.probe(
+                ip = device.ip,
+                socket = socket,
+                txPacket = report.packet,
+                txPort = device.port
+            )
             socket?.close()
             LogStore.info(context, "PROBE", "${device.ip} ${probe.title} · ${probe.summary().replace("\n", " ")}")
             wakeState.value = WakeUiState(device.name, sending = false, report = report, probe = probe)
