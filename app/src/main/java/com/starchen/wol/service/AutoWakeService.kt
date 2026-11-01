@@ -15,6 +15,7 @@ import com.starchen.wol.MainActivity
 import com.starchen.wol.R
 import com.starchen.wol.data.WorkMode
 import com.starchen.wol.data.WolStore
+import com.starchen.wol.util.LogStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -67,6 +68,7 @@ class AutoWakeService : Service() {
         }
         startForeground(NOTIF_ID, buildNotification())
         Scheduler.scheduleAll(this)
+        LogStore.info(this, "SERVICE", "保活服务启动")
         scope.launch { applyRootIfNeeded() }
         return START_STICKY
     }
@@ -75,7 +77,14 @@ class AutoWakeService : Service() {
         val settings = WolStore.settings(this).first()
         if (settings.workMode == WorkMode.ROOT && KeepAliveManager.isRootAvailable()) {
             val result = KeepAliveManager.applyRootKeepAlive(this)
-            Log.i(TAG, "root 保活: ${result.log.joinToString()}")
+            val okCount = result.steps.count { it.ok }
+            LogStore.info(
+                this, "ROOT",
+                "启动时自动应用保活：$okCount/${result.steps.size} 成功"
+            )
+            result.steps.filterNot { it.ok }.forEach {
+                LogStore.warn(this, "ROOT", "${it.command.label} 失败：${it.output}")
+            }
         }
     }
 

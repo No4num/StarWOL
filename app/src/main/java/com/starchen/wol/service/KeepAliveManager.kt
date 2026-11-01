@@ -49,22 +49,24 @@ object KeepAliveManager {
         KeepAliveItem.ACCESSIBILITY -> "作为兜底：被系统回收后自动把应用重新拉起来"
     }
 
-    fun isGranted(context: Context, item: KeepAliveItem): Boolean = when (item) {
-        KeepAliveItem.NOTIFICATION ->
-            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
-                PackageManager.PERMISSION_GRANTED
-        KeepAliveItem.BATTERY -> {
-            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-            pm.isIgnoringBatteryOptimizations(context.packageName)
+    fun isGranted(context: Context, item: KeepAliveItem): Boolean = runCatching {
+        when (item) {
+            KeepAliveItem.NOTIFICATION ->
+                ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED
+            KeepAliveItem.BATTERY -> {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                pm.isIgnoringBatteryOptimizations(context.packageName)
+            }
+            KeepAliveItem.EXACT_ALARM -> {
+                val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.canScheduleExactAlarms() else true
+            }
+            KeepAliveItem.AUTO_START -> isAutoStartAllowed(context)
+            KeepAliveItem.BACKGROUND -> !isBackgroundRestricted(context)
+            KeepAliveItem.ACCESSIBILITY -> isAccessibilityServiceEnabled(context)
         }
-        KeepAliveItem.EXACT_ALARM -> {
-            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.canScheduleExactAlarms() else true
-        }
-        KeepAliveItem.AUTO_START -> isAutoStartAllowed(context)
-        KeepAliveItem.BACKGROUND -> !isBackgroundRestricted(context)
-        KeepAliveItem.ACCESSIBILITY -> isAccessibilityServiceEnabled(context)
-    }
+    }.getOrDefault(false)
 
     fun allStates(context: Context): List<KeepAliveState> =
         KeepAliveItem.entries.map { KeepAliveState(it, isGranted(context, it)) }
@@ -164,6 +166,9 @@ object KeepAliveManager {
     }
 
     // ---------- root ----------
+    //
+    // 原则：只碰自己这个包，不做任何全局设置。
+    // 每条命令都是写死的模板，包名只经过一次字符校验，不存在拼接执行。
 
     fun isRootAvailable(): Boolean = runCatching {
         val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
@@ -172,36 +177,107 @@ object KeepAliveManager {
         out.contains("uid=0")
     }.getOrDefault(false)
 
-    data class RootKeepAliveResult(val ok: Boolean, val log: List<String>)
+    /** 一条 root 操作：做什么 / 实际命令 / 撤销命令 */
+    data class RootCommand(
+        val label: String,
+        val shell: String,
+        val revertShell: String? = null
+    )
 
-    /** root 下把应用钉进各种白名单，配合前台服务尽力保活 */
-    fun applyRootKeepAlive(context: Context): RootKeepAliveResult {
-        val pkg = context.packageName
-        val commands = listOf(
-            "cmd deviceidle whitelist +$pkg",
-            "dumpsys deviceidle whitelist | grep $pkg",
-            "am set-standby-bucket $pkg active",
-            "cmd appops set $pkg RUN_IN_BACKGROUND allow",
-            "cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow",
-            "settings put global package_verifier_enable 0"
+    data class RootStep(val command: RootCommand, val output: String, val ok: Boolean)
+
+    data class RootBatch(val steps: List<RootStep>) {
+        val allOk: Boolean get() = steps.isNotEmpty() && steps.all { it.ok }
+    }
+
+    /**
+     * 保活要执行的全部命令。
+     * 只动 com.starchen.wol 自己：Doze 白名单、待机桶、两条后台 op。
+     */
+    fun keepAlivePlan(pkg: String): List<RootCommand> = listOf(
+        RootCommand(
+            label = "加入 Doze 白名单",
+            shell = "cmd deviceidle whitelist +$pkg",
+            revertShell = "cmd deviceidle whitelist -$pkg"
+        ),
+        RootCommand(
+            label = "待机桶设为 active",
+            shell = "am set-standby-bucket $pkg active",
+            revertShell = "am set-standby-bucket $pkg 10"
+        ),
+        RootCommand(
+            label = "允许后台活动",
+            shell = "cmd appops set $pkg RUN_IN_BACKGROUND allow",
+            revertShell = "cmd appops set $pkg RUN_IN_BACKGROUND default"
+        ),
+        RootCommand(
+            label = "允许任意后台活动",
+            shell = "cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow",
+            revertShell = "cmd appops set $pkg RUN_ANY_IN_BACKGROUND default"
         )
-        val log = mutableListOf<String>()
-        var ok = true
-        for (cmd in commands) {
-            val result = runRoot(cmd)
-            log += "» $cmd\n${result.trim().ifBlank { "（无输出）" }}"
+    )
+
+    /** 执行后核对（只读） */
+    fun verifyPlan(pkg: String): List<RootCommand> = listOf(
+        RootCommand("核对 Doze 白名单", "dumpsys deviceidle whitelist"),
+        RootCommand("核对待机桶", "am get-standby-bucket $pkg"),
+        RootCommand("核对后台 op", "cmd appops get $pkg RUN_IN_BACKGROUND")
+    )
+
+    /** 撤销计划 */
+    fun revertPlan(pkg: String): List<RootCommand> =
+        keepAlivePlan(pkg).mapNotNull { cmd ->
+            cmd.revertShell?.let { RootCommand("撤销：${cmd.label}", it) }
         }
-        return RootKeepAliveResult(ok, log)
+
+    fun applyRootKeepAlive(context: Context, onStep: ((RootStep) -> Unit)? = null): RootBatch {
+        val pkg = context.packageName
+        if (!isValidPackageName(pkg)) {
+            return RootBatch(listOf(RootStep(RootCommand("包名校验失败", pkg), "包名含非法字符", false)))
+        }
+        return executePlan(keepAlivePlan(pkg), onStep)
     }
 
-    fun runRoot(command: String): String {
-        return runCatching {
-            val process = Runtime.getRuntime().exec(arrayOf("su"))
-            process.outputStream.bufferedWriter().use { it.write(command + "\nexit\n") }
-            val text = process.inputStream.bufferedReader().readText()
-            val err = process.errorStream.bufferedReader().readText()
-            process.waitFor()
-            text + err
-        }.getOrDefault("${'$'}?=执行失败")
+    fun revertRootKeepAlive(context: Context, onStep: ((RootStep) -> Unit)? = null): RootBatch {
+        val pkg = context.packageName
+        return executePlan(revertPlan(pkg), onStep)
     }
+
+    fun verifyRootKeepAlive(context: Context): RootBatch {
+        val pkg = context.packageName
+        return executePlan(verifyPlan(pkg), null)
+    }
+
+    private fun executePlan(plan: List<RootCommand>, onStep: ((RootStep) -> Unit)?): RootBatch {
+        val steps = mutableListOf<RootStep>()
+        for (cmd in plan) {
+            val output = runRoot(cmd.shell)
+            val ok = !output.startsWith("__FAIL__")
+            val step = RootStep(cmd, output.removePrefix("__FAIL__"), ok)
+            steps += step
+            onStep?.invoke(step)
+        }
+        return RootBatch(steps)
+    }
+
+    /** 唯一的执行入口。只接受本类生成的命令模板，外部拿不到。 */
+    private fun runRoot(shell: String): String {
+        return runCatching {
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", shell))
+            val out = process.inputStream.bufferedReader().readText().trim()
+            val err = process.errorStream.bufferedReader().readText().trim()
+            val finished = process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)
+            if (!finished) {
+                process.destroy()
+                "__FAIL__超时（12s），可能没给 root 授权"
+            } else if (process.exitValue() != 0 && out.isEmpty()) {
+                "__FAIL__$err"
+            } else {
+                out.ifBlank { "（无输出）" }
+            }
+        }.getOrDefault("__FAIL__执行异常，可能是 su 不可用")
+    }
+
+    private fun isValidPackageName(pkg: String): Boolean =
+        pkg.isNotEmpty() && pkg.length <= 128 && pkg.all { it.isLetterOrDigit() || it == '.' || it == '_' }
 }

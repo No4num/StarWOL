@@ -87,6 +87,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        com.starchen.wol.util.LogStore.info(this, "APP", "StarWOL 启动")
         setContent {
             StarWolTheme {
                 AppRoot(
@@ -123,6 +124,7 @@ private fun AppRoot(
     var screen by remember { mutableStateOf<Screen>(Screen.Home) }
     val devices by viewModel.devices.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val logs by viewModel.logs.collectAsStateWithLifecycle()
 
     AnimatedContent(
         targetState = screen,
@@ -145,6 +147,9 @@ private fun AppRoot(
 
                 is Screen.Settings -> SettingsScreen(
                     workMode = settings.workMode,
+                    showLogs = settings.showLogs,
+                    writeLogs = settings.writeLogs,
+                    logs = logs,
                     onBack = { screen = Screen.Home },
                     onWorkModeChange = { mode ->
                         viewModel.setWorkMode(mode)
@@ -152,6 +157,9 @@ private fun AppRoot(
                             requestNotificationPermission { }
                         }
                     },
+                    onShowLogsChange = { viewModel.setShowLogs(it) },
+                    onWriteLogsChange = { viewModel.setWriteLogs(it) },
+                    onClearLogs = { viewModel.clearLogs() },
                     onRequestPermission = { item ->
                         if (KeepAliveManager.isRuntimePermission(item)) {
                             requestNotificationPermission { }

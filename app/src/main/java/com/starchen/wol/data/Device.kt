@@ -27,5 +27,9 @@ enum class WorkMode { NORMAL, ROOT }
 
 @Serializable
 data class AppSettings(
-    val workMode: WorkMode = WorkMode.NORMAL
+    val workMode: WorkMode = WorkMode.NORMAL,
+    /** 设置页里显示日志面板 */
+    val showLogs: Boolean = true,
+    /** 运行过程中把日志写进文件 */
+    val writeLogs: Boolean = true
 )

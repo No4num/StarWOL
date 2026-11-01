@@ -3,9 +3,12 @@ package com.starchen.wol
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import com.starchen.wol.data.Device
+import com.starchen.wol.data.WorkMode
 import com.starchen.wol.ui.DeviceEditorScreen
 import com.starchen.wol.ui.HomeScreen
+import com.starchen.wol.ui.SettingsScreen
 import com.starchen.wol.ui.theme.StarWolTheme
+import com.starchen.wol.util.LogStore
 import org.junit.Rule
 import org.junit.Test
 
@@ -32,6 +35,17 @@ class ScreenshotTest {
             mac = "DE:AD:BE:EF:00:01", autoWakeEnabled = true,
             autoWakeHour = 7, autoWakeMinute = 30
         )
+    )
+
+    private val fakeLogs = listOf(
+        LogStore.Entry(System.currentTimeMillis() - 60000, LogStore.Level.INFO, "APP", "StarWOL 启动"),
+        LogStore.Entry(System.currentTimeMillis() - 55000, LogStore.Level.INFO, "SERVICE", "保活服务启动"),
+        LogStore.Entry(System.currentTimeMillis() - 50000, LogStore.Level.INFO, "WOL", "发送 客厅台式机 → 192.168.1.100:9 / AA:BB:CC:DD:EE:FF / 含广播"),
+        LogStore.Entry(System.currentTimeMillis() - 49000, LogStore.Level.INFO, "WOL", "单播 WOL 成功 192.168.1.100:9 · 102 字节"),
+        LogStore.Entry(System.currentTimeMillis() - 48000, LogStore.Level.INFO, "WOL", "广播 WOL 成功 255.255.255.255:9"),
+        LogStore.Entry(System.currentTimeMillis() - 46000, LogStore.Level.INFO, "PROBE", "192.168.1.100 无回包 · 2500ms 内没有收到任何响应"),
+        LogStore.Entry(System.currentTimeMillis() - 40000, LogStore.Level.WARN, "ROOT", "待机桶设为 active 失败：Permission denied"),
+        LogStore.Entry(System.currentTimeMillis() - 30000, LogStore.Level.INFO, "SCHEDULER", "已排期 卧室 每天 07:30")
     )
 
     @Test
@@ -87,6 +101,26 @@ class ScreenshotTest {
                     existing = sampleDevices[0],
                     onBack = {},
                     onSave = {}
+                )
+            }
+        }
+    }
+
+    @Test
+    fun settings_normal() {
+        paparazzi.snapshot {
+            StarWolTheme {
+                SettingsScreen(
+                    workMode = WorkMode.NORMAL,
+                    showLogs = true,
+                    writeLogs = true,
+                    logs = fakeLogs,
+                    onBack = {},
+                    onWorkModeChange = {},
+                    onShowLogsChange = {},
+                    onWriteLogsChange = {},
+                    onClearLogs = {},
+                    onRequestPermission = {}
                 )
             }
         }

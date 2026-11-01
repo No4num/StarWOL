@@ -4,8 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.PowerManager
-import android.util.Log
 import com.starchen.wol.data.WolStore
+import com.starchen.wol.util.LogStore
 import com.starchen.wol.wol.WolSender
 import kotlinx.coroutines.runBlocking
 
@@ -26,8 +26,9 @@ class AlarmReceiver : BroadcastReceiver() {
                 wakeLock.acquire(30_000L)
                 val device = WolStore.devicesBlocking(context).firstOrNull { it.id == deviceId }
                 if (device == null) {
-                    Log.w("StarWol.Alarm", "设备已删除: $deviceId")
+                    LogStore.warn(context, "ALARM", "定时任务触发了但设备已被删除：$deviceId")
                 } else {
+                    LogStore.info(context, "ALARM", "定时唤醒 ${device.name} → ${device.endpoint}")
                     runBlocking {
                         val (report, socket) = WolSender.send(
                             ip = device.ip,
@@ -36,13 +37,19 @@ class AlarmReceiver : BroadcastReceiver() {
                             alsoBroadcast = device.autoBroadcast
                         )
                         socket?.close()
-                        Log.i("StarWol.Alarm", "定时唤醒 ${device.name}: ${report.steps.joinToString()}")
+                        report.steps.forEach { step ->
+                            if (step.ok) {
+                                LogStore.info(context, "ALARM", "${step.label} 成功 ${step.detail}")
+                            } else {
+                                LogStore.error(context, "ALARM", "${step.label} 失败 ${step.detail}")
+                            }
+                        }
                     }
                     // 重排下一天
                     Scheduler.schedule(context, device)
                 }
             } catch (e: Exception) {
-                Log.e("StarWol.Alarm", "定时唤醒失败: ${e.message}", e)
+                LogStore.error(context, "ALARM", "定时唤醒异常：${e.message}")
             } finally {
                 if (wakeLock.isHeld) wakeLock.release()
                 pending.finish()

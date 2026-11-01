@@ -4,13 +4,34 @@
 
 ## 功能
 
-- 设备卡片：点一下发 WOL，长按/点右上角进入编辑
+- 设备卡片：点一下发 WOL，长按删除，右上角进入编辑
 - 发送单播 magic packet 到 `IP:端口`，可选再向 `255.255.255.255` 广播一遍
 - 发出后探测目的 IP 的回包（UDP 监听 + ICMP ping + 常见端口探测）
 - 每天定时自动唤醒，滚轮选时间（24h 循环）
 - 工作模式：正常 / Root
   - 正常模式：逐项申请通知、电池优化豁免、精确闹钟、自启动、后台限制、无障碍
   - Root 模式：检测 root，把应用写进 Doze 白名单 / 待机桶 / 后台 op 允许列表
+- 运行日志：设置页实时查看、导出分享、落盘到应用私有目录，显示与落盘各有开关（默认开）
+
+## Root 模式执行了什么
+
+只有 4 条命令，全部只针对本应用包名，不碰系统全局设置：
+
+```
+cmd deviceidle whitelist +com.starchen.wol
+am set-standby-bucket com.starchen.wol active
+cmd appops set com.starchen.wol RUN_IN_BACKGROUND allow
+cmd appops set com.starchen.wol RUN_ANY_IN_BACKGROUND allow
+```
+
+每条都有对应的撤销命令（`-包名` / `10` / `default`）。执行前会弹确认框列出全部命令，执行后只读核对一遍。子进程用 `su -c` 传数组参数启动，不拼接 shell 字符串，12 秒超时。
+
+## 日志
+
+- 内存保留最近 300 条，落盘到 `filesDir/logs/starwol.log`，超过 512KB 滚动为 `.1`
+- 设置页两个开关：显示日志、写入日志文件，默认都开
+- 导出走 FileProvider + 系统分享
+- 埋点覆盖：启动、服务、Root 每条命令、WOL 发送/广播、探测结果、定时排期、设备增删改、设置变更
 
 ## 本地构建
 
@@ -40,10 +61,12 @@ release 默认用工程内 `.keystore/starwol.jks`（密码都是 `starwol`）�
 
 | Secret | 说明 |
 | --- | --- |
-| `KEYSTORE_PATH` | keystore 文件路径（CI 里需先解码写入） |
+| `KEYSTORE_BASE64` | keystore 文件的 base64 |
 | `KEYSTORE_PASSWORD` | store 密码 |
 | `KEY_ALIAS` | 别名 |
 | `KEY_PASSWORD` | key 密码 |
+
+没配 `KEYSTORE_BASE64` 时工作流会现场生成一个临时 keystore，保证 release 能构建出来（但那不是稳定签名，只适合自测）。
 
 ## 保活说明
 
@@ -62,5 +85,6 @@ app/src/main/java/com/starchen/wol/
 ├── data/                    设备模型 + DataStore 持久化
 ├── wol/                     MAC 解析、magic packet、回包探测
 ├── service/                 前台服务、定时调度、开机广播、保活
-└── ui/                      主页、编辑页、设置页、滚轮组件
+├── ui/                      主页、编辑页、设置页、滚轮组件
+└── util/                    日志存储
 ```
